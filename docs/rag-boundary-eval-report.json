@@ -1,0 +1,269 @@
+{
+  "case_count": 17,
+  "precision": 0.8571,
+  "recall": 0.9231,
+  "accuracy": 0.8235,
+  "confusion_matrix": {
+    "true_positive": 12,
+    "true_negative": 2,
+    "false_positive": 2,
+    "false_negative": 1
+  },
+  "by_category": {
+    "general_knowledge": {
+      "total": 3,
+      "matched": 2,
+      "expected_use_kb": 3,
+      "predicted_use_kb": 2
+    },
+    "course_material": {
+      "total": 3,
+      "matched": 3,
+      "expected_use_kb": 3,
+      "predicted_use_kb": 3
+    },
+    "question_bank": {
+      "total": 2,
+      "matched": 2,
+      "expected_use_kb": 2,
+      "predicted_use_kb": 2
+    },
+    "uploaded_document": {
+      "total": 1,
+      "matched": 1,
+      "expected_use_kb": 1,
+      "predicted_use_kb": 1
+    },
+    "project_code": {
+      "total": 2,
+      "matched": 2,
+      "expected_use_kb": 2,
+      "predicted_use_kb": 2
+    },
+    "incident_log": {
+      "total": 1,
+      "matched": 1,
+      "expected_use_kb": 1,
+      "predicted_use_kb": 1
+    },
+    "followup_repair": {
+      "total": 1,
+      "matched": 1,
+      "expected_use_kb": 1,
+      "predicted_use_kb": 1
+    },
+    "meta_tool_policy": {
+      "total": 1,
+      "matched": 0,
+      "expected_use_kb": 0,
+      "predicted_use_kb": 1
+    },
+    "web_freshness": {
+      "total": 1,
+      "matched": 1,
+      "expected_use_kb": 0,
+      "predicted_use_kb": 0
+    },
+    "direct_override": {
+      "total": 1,
+      "matched": 0,
+      "expected_use_kb": 0,
+      "predicted_use_kb": 1
+    },
+    "math": {
+      "total": 1,
+      "matched": 1,
+      "expected_use_kb": 0,
+      "predicted_use_kb": 0
+    }
+  },
+  "predictions": [
+    {
+      "id": "general_knowledge_business_model_canvas",
+      "category": "general_knowledge",
+      "query": "什么是商业模式画布？",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "general_knowledge_mvp_meaning",
+      "category": "general_knowledge",
+      "query": "MVP是什么意思？",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "general_knowledge_business_plan_sections",
+      "category": "general_knowledge",
+      "query": "商业计划书有哪些部分？",
+      "expected_use_kb": true,
+      "predicted_use_kb": false,
+      "route_mode": "short_circuit",
+      "recommended_action": "guidance",
+      "reason_code": "out_of_scope",
+      "matched": false
+    },
+    {
+      "id": "course_definition_mvp",
+      "category": "course_material",
+      "query": "老师在课上怎么定义MVP？",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "course_definition_mvp_this_course",
+      "category": "course_material",
+      "query": "MVP在我们这门课里是怎么定义的？",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "course_alignment_value_proposition",
+      "category": "course_material",
+      "query": "请按课件表述解释价值主张",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "question_bank_alignment_value_proposition",
+      "category": "question_bank",
+      "query": "题库里价值主张的构成要素有哪些？",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "question_bank_consistency_value_proposition",
+      "category": "question_bank",
+      "query": "价值主张的构成要素有哪些？要和题库一致",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "uploaded_doc_financing_risk",
+      "category": "uploaded_document",
+      "query": "结合我上传的商业计划书，总结当前融资风险",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "project_code_agent_logic",
+      "category": "project_code",
+      "query": "讲解 app 下 agent 逻辑",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "project_code_deictic_agent_logic",
+      "category": "project_code",
+      "query": "这个项目的 agent 如何工作的？",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "incident_log_error_analysis",
+      "category": "incident_log",
+      "query": "根据日志分析这个报错",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "followup_repair_requires_kb",
+      "category": "followup_repair",
+      "query": "不对，你应该主动检索知识库来回答",
+      "expected_use_kb": true,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": true
+    },
+    {
+      "id": "tool_policy_meta_question_should_not_use_kb",
+      "category": "meta_tool_policy",
+      "query": "我问的是，你认为上面那个问题需不需要检索知识库，不是叫你去检索",
+      "expected_use_kb": false,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": false
+    },
+    {
+      "id": "web_latest_gold_price",
+      "category": "web_freshness",
+      "query": "今天黄金价格是多少？",
+      "expected_use_kb": false,
+      "predicted_use_kb": false,
+      "route_mode": "short_circuit",
+      "recommended_action": "guidance",
+      "reason_code": "out_of_scope",
+      "matched": true
+    },
+    {
+      "id": "direct_only_override",
+      "category": "direct_override",
+      "query": "不要检索，直接回答什么是商业模式画布？",
+      "expected_use_kb": false,
+      "predicted_use_kb": true,
+      "route_mode": "retrieval_first",
+      "recommended_action": "knowledge_retrieval",
+      "reason_code": "domain",
+      "matched": false
+    },
+    {
+      "id": "math_only_margin_calc",
+      "category": "math",
+      "query": "请计算 12*(3+4)",
+      "expected_use_kb": false,
+      "predicted_use_kb": false,
+      "route_mode": "tool_math",
+      "recommended_action": "math_calculator",
+      "reason_code": "math",
+      "matched": true
+    }
+  ]
+}

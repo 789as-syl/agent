@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.vectorizeQuestions = exports.unlinkKnowledgePoint = exports.linkKnowledgePoints = exports.getVectorizationJob = exports.importQuestions = exports.deleteQuestion = exports.updateQuestion = exports.getQuestion = exports.createQuestion = exports.getQuestions = exports.deleteQuestionBank = exports.updateQuestionBank = exports.createQuestionBank = exports.getQuestionBanks = exports.adminQuestionsApi = void 0;
+const client_1 = require("./client");
+const module_factories_1 = require("@shared/api/module-factories");
+const adminQuestionsApi = (0, module_factories_1.createAdminQuestionsApi)(client_1.apiClient);
+exports.adminQuestionsApi = adminQuestionsApi;
+exports.getQuestionBanks = adminQuestionsApi.getQuestionBanks, exports.createQuestionBank = adminQuestionsApi.createQuestionBank, exports.updateQuestionBank = adminQuestionsApi.updateQuestionBank, exports.deleteQuestionBank = adminQuestionsApi.deleteQuestionBank, exports.getQuestions = adminQuestionsApi.getQuestions, exports.createQuestion = adminQuestionsApi.createQuestion, exports.getQuestion = adminQuestionsApi.getQuestion, exports.updateQuestion = adminQuestionsApi.updateQuestion, exports.deleteQuestion = adminQuestionsApi.deleteQuestion, exports.importQuestions = adminQuestionsApi.importQuestions, exports.getVectorizationJob = adminQuestionsApi.getVectorizationJob, exports.linkKnowledgePoints = adminQuestionsApi.linkKnowledgePoints, exports.unlinkKnowledgePoint = adminQuestionsApi.unlinkKnowledgePoint;
+const vectorizeQuestions = (data = { only_dirty: true, batch_size: 10 }) => adminQuestionsApi.vectorizeQuestions(data);
+exports.vectorizeQuestions = vectorizeQuestions;

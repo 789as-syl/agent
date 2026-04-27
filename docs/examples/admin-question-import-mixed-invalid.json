@@ -1,0 +1,47 @@
+{
+  "bank_id": "REPLACE_WITH_BANK_ID",
+  "questions": [
+    {
+      "external_id": "ok-001",
+      "question_text": "HTTP 默认端口通常是?",
+      "question_type": "single",
+      "options": [
+        { "label": "A", "text": "21" },
+        { "label": "B", "text": "80" },
+        { "label": "C", "text": "443" }
+      ],
+      "answer": "B",
+      "knowledge_point_titles": []
+    },
+    {
+      "external_id": "bad-legacy-type",
+      "question_text": "旧题型值示例",
+      "question_type": "single_choice",
+      "options": [
+        { "label": "A", "text": "选项1" },
+        { "label": "B", "text": "选项2" }
+      ],
+      "answer": "A",
+      "knowledge_point_titles": []
+    },
+    {
+      "external_id": "bad-legacy-options",
+      "question_text": "旧 options 结构示例",
+      "question_type": "multiple",
+      "options": ["A", "B", "C"],
+      "answer": "A,C",
+      "knowledge_point_titles": []
+    },
+    {
+      "external_id": "bad-true-false-options",
+      "question_text": "判断题不允许 options",
+      "question_type": "true_false",
+      "options": [
+        { "label": "A", "text": "对" },
+        { "label": "B", "text": "错" }
+      ],
+      "answer": "true",
+      "knowledge_point_titles": []
+    }
+  ]
+}

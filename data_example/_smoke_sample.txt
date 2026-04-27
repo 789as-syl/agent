@@ -1,0 +1,3 @@
+回归 TXT
+
+这是一个用于 Docling hard cutover 的纯文本 smoke 样本。

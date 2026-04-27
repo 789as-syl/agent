@@ -1,0 +1,139 @@
+[
+  {
+    "id": "general_knowledge_business_model_canvas",
+    "category": "general_knowledge",
+    "query": "什么是商业模式画布？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "general_knowledge_mvp_meaning",
+    "category": "general_knowledge",
+    "query": "MVP是什么意思？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "general_knowledge_business_plan_sections",
+    "category": "general_knowledge",
+    "query": "商业计划书有哪些部分？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "course_definition_mvp",
+    "category": "course_material",
+    "query": "老师在课上怎么定义MVP？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "course_definition_mvp_this_course",
+    "category": "course_material",
+    "query": "MVP在我们这门课里是怎么定义的？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "course_alignment_value_proposition",
+    "category": "course_material",
+    "query": "请按课件表述解释价值主张",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "question_bank_alignment_value_proposition",
+    "category": "question_bank",
+    "query": "题库里价值主张的构成要素有哪些？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "question_bank_consistency_value_proposition",
+    "category": "question_bank",
+    "query": "价值主张的构成要素有哪些？要和题库一致",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "uploaded_doc_financing_risk",
+    "category": "uploaded_document",
+    "query": "结合我上传的商业计划书，总结当前融资风险",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "project_code_agent_logic",
+    "category": "project_code",
+    "query": "讲解 app 下 agent 逻辑",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "project_code_deictic_agent_logic",
+    "category": "project_code",
+    "query": "这个项目的 agent 如何工作的？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "incident_log_error_analysis",
+    "category": "incident_log",
+    "query": "根据日志分析这个报错",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "followup_repair_requires_kb",
+    "category": "followup_repair",
+    "query": "不对，你应该主动检索知识库来回答",
+    "history": [
+      {
+        "role": "user",
+        "content": "创新创业中，价值主张的构成要素有哪些？"
+      },
+      {
+        "role": "assistant",
+        "content": "价值主张通常包括目标用户、核心收益等。"
+      }
+    ],
+    "expected_use_kb": true
+  },
+  {
+    "id": "tool_policy_meta_question_should_not_use_kb",
+    "category": "meta_tool_policy",
+    "query": "我问的是，你认为上面那个问题需不需要检索知识库，不是叫你去检索",
+    "history": [
+      {
+        "role": "user",
+        "content": "价值主张的类型 有哪些？，你认为需要检索内部知识库吗?回答我的问题"
+      },
+      {
+        "role": "assistant",
+        "content": "价值主张的类型主要包括以下几种：..."
+      }
+    ],
+    "expected_use_kb": false
+  },
+  {
+    "id": "web_latest_gold_price",
+    "category": "web_freshness",
+    "query": "今天黄金价格是多少？",
+    "history": [],
+    "expected_use_kb": false
+  },
+  {
+    "id": "direct_only_override",
+    "category": "direct_override",
+    "query": "不要检索，直接回答什么是商业模式画布？",
+    "history": [],
+    "expected_use_kb": false
+  },
+  {
+    "id": "math_only_margin_calc",
+    "category": "math",
+    "query": "请计算 12*(3+4)",
+    "history": [],
+    "expected_use_kb": false
+  }
+]

@@ -1,0 +1,78 @@
+模式：solo（已按 $security-review 执行）
+
+  # 安全质量审查报告
+
+  审查时间：2026-04-14
+  范围：app/ 后端、front/client、front/admin、配置与运行文件（.env / .env.example / docker-compose.yml）
+
+  ## 总结
+
+  结论：中高风险。
+  如果要面向公网/联调环境，不建议按当前配置直接部署；应先处理下列 HIGH 和主要 MEDIUM 项。
+
+  ## 主要发现
+
+  ### HIGH
+
+  1. CORS 允许任意来源并开启凭证
+      - 证据：
+          - app/main.py:105-110
+          - app/core/config.py:98
+          - .env:33
+      - 复现：我用 Origin: https://evil.example 做预检请求，服务返回了：
+          - access-control-allow-origin: https://evil.example
+          - access-control-allow-credentials: true
+      - 风险：信任边界过宽，后续任何基于 Cookie/凭证的接口都更容易被跨站滥用。
+      - 建议：生产环境强制白名单域名；禁止 * + credentials 组合；为 CORS 加测试。
+  2. 前端依赖存在已知漏洞
+      - 证据：
+          - front/admin/package.json:28 使用 xlsx
+          - npm audit --registry=https://registry.npmjs.org --json
+      - 结果：
+          - front/admin：1 high + 2 moderate
+              - xlsx@0.18.5：GHSA-4r6h-8v6p-xvw6、GHSA-5pgg-2g8v-p4x9
+              - axios -> follow-redirects@1.15.11：GHSA-r4q5-vmmm-2653
+          - front/client：2 moderate
+              - axios -> follow-redirects@1.15.11
+      - 补充：front/admin/src 中我没搜到 xlsx 实际使用，像是可删除的高危依赖。
+      - 建议：优先移除未使用的 xlsx；跟进 axios/follow-redirects 修复。
+
+  3. Access Token 持久化到浏览器存储，削弱 HttpOnly Cookie 保护
+      - 证据：
+          - front/client/src/store/index.ts:48-109
+          - front/admin/src/store/index.ts:138-200
+          - front/shared/api/client-core.ts:80-87
+          - app/api/auth.py:35-40, 58-60
+      - 风险：一旦前端出现 XSS/供应链脚本注入，Bearer Token 易被窃取；管理端风险更高。
+      - 建议：不要把 access token 持久化到 Zustand/localStorage；优先改成 HttpOnly Cookie + CSRF 防护，最少也应只放内存。
+  4. 登录/注册接口被显式排除在限流之外
+      - 证据：app/core/middleware.py:293-296
+      - 风险：容易被暴力破解/撞库。
+      - 建议：对 /auth/login、/auth/register 增加 IP + 账号维度限流、退避、告警。
+  5. 上传回调信任客户端传入的 object_path / file_size
+      - 证据：
+          - app/api/ingestion.py:44-54, 57-66
+          - app/services/ingestion_service.py:41-50, 61-72
+      - 问题：
+          - 预签名阶段只校验“声明的”大小；
+          - 回调阶段没有校验真实对象大小/对象归属；
+          - 没看到 stat_object 或 upload ticket 绑定。
+      - 风险：可导致处理任意桶内对象，或绕过大小限制造成资源消耗。
+      - 建议：回调时校验对象前缀、真实大小、存在性；用服务端签发的 upload ticket 绑定 presign 与 callback。
+  6. 工作区存在真实密钥，且默认凭证较多
+      - 证据：
+          - .env:44 DASHSCOPE_API_KEY=<redacted>
+          - .env:66 JWT_SECRET_KEY=<redacted>
+          - docker-compose.yml:6-7, 43-44
+          - app/core/config.py:28, 35-36
+      - 说明：.gitignore:29-31 已忽略 .env，降低了误提交风险，但当前工作区确实存在有效密钥。
+      - 风险：本地泄露、打包误带、共享工作目录时暴露。
+      - 建议：立即轮换当前 DashScope key 和 JWT secret；生产禁用默认 postgres/minioadmin。
+
+  ### LOW
+
+  7. 认证失败日志记录手机号
+      - 证据：app/services/auth_service.py:37, 44
+      - 风险：日志侧 PII储
+  8. 给登录/注册加限流
+  9. 轮. 给上传 callback 增加服务端校验绑定

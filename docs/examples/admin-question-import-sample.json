@@ -1,0 +1,48 @@
+{
+  "bank_id": "REPLACE_WITH_BANK_ID",
+  "questions": [
+    {
+      "external_id": "single-001",
+      "question_text": "2 + 2 = ?",
+      "question_type": "single",
+      "options": [
+        { "label": "A", "text": "3" },
+        { "label": "B", "text": "4" }
+      ],
+      "answer": "B",
+      "explanation": "4 正确",
+      "knowledge_point_titles": []
+    },
+    {
+      "external_id": "multiple-001",
+      "question_text": "哪些是质数?",
+      "question_type": "multiple",
+      "options": [
+        { "label": "A", "text": "2" },
+        { "label": "B", "text": "4" },
+        { "label": "C", "text": "5" }
+      ],
+      "answer": "A,C",
+      "explanation": "2 和 5 是质数",
+      "knowledge_point_titles": []
+    },
+    {
+      "external_id": "tf-001",
+      "question_text": "太阳从东方升起。",
+      "question_type": "true_false",
+      "options": null,
+      "answer": "true",
+      "explanation": "常识判断",
+      "knowledge_point_titles": []
+    },
+    {
+      "external_id": "short-001",
+      "question_text": "请简述 HTTP 的作用。",
+      "question_type": "short_answer",
+      "options": null,
+      "answer": "用于客户端与服务端传输超文本数据的应用层协议。",
+      "explanation": "开放题",
+      "knowledge_point_titles": []
+    }
+  ]
+}

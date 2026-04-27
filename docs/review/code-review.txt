@@ -1,0 +1,147 @@
+• 有，下面是正式报告。
+
+  > 说明：当前目录不是 git 仓库，所以这次是对当前代码快照做仓库级审查，不是 PR diff 审查。
+  > 更新（2026-04-15）：本报告保留当时快照结论，但其中“`llama_index.postprocessor` / `DashScopeRerank` 依赖缺失”与“Celery 失败状态可能被回滚”两项已修复。当前主干已改为直接使用 `dashscope` SDK 处理 embedding / rerank，`llama-index` 仅保留在文档解析/切分链路。
+
+  # 代码审查报告
+
+  ## 总结
+
+  结论：REQUEST CHANGES
+
+  后端整体分层还可以，测试基线也不错，但目前还有几项会影响可上线性 / 可冻结性 / 可观测性的问题，建议先修完再推进。
+
+  ———
+
+  ## 审查范围
+
+  - app/api
+  - app/core
+  - app/models
+  - app/repositories
+  - app/services
+  - app/tasks
+  - app/tools
+  - app/tests
+  - pyproject.toml
+
+  ———
+
+  ## 验证结果
+
+  - alembic -c alembic.test.ini upgrade head ✅
+  - TEST_DATABASE_URL=...knowledge_base_test pytest app/tests -q ✅ 259 passed
+  - ruff check app --select E,F,B --statistics ❌ 20 个问题
+  - mypy app/api app/core app/models app/repositories app/services app/tasks app/tools ❌ 103 errors / 23 files
+  - 直接导入应用做启动验证：from app.main import app ❌（历史问题，已修复）
+    报错：ModuleNotFoundError: No module named 'llama_index.postprocessor'
+
+  ———
+
+  # 发现的问题
+
+  ## HIGH
+
+  ### 1) [已修复] 运行时依赖缺失，应用可能无法正常启动
+
+  - 位置:
+      - app/services/retrieval/rerank_service.py:7
+      - pyproject.toml:24-29
+  - 问题: 当时代码直接依赖 llama_index.postprocessor.dashscope_rerank.DashScopeRerank，但依赖清单里只看到了 embeddings 相关包，没有保证该依赖，或把 rerank 组件改为可选加载并在缺失时优雅降级。
+
+  ### 2) JWT 密钥默认随机生成，重启/多实例会导致 token 失效
+
+  - 位置:
+      - app/core/config.py:81
+      - app/core/security.py:80-83, 112-115
+  - 问题: jwt_secret_key 默认用 secrets.token_urlsafe(32) 动态生成。
+  - 风险:
+      - 服务重启后旧 token 全失效
+      - 多实例部署时实例间 token 不互认
+  - 建议: 改成必须显式配置 JWT_SECRET_KEY，缺失时启动失败。
+
+  ### 3) 登录/注册接口被限流中间件跳过
+
+  - 位置: app/core/middleware.py:293-296
+  - 问题: /api/v1/auth/login 和 /api/v1/auth/register 被排除在限流之外。
+  - 风险: 容易被暴力破解、撞库、恶意注册打爆。
+  - 建议: 至少对登录/注册加基于 IP + phone/account 的限流。
+
+  ### 4) [已修复] Celery 失败状态可能被回滚，任务状态不可靠
+
+  - 位置:
+      - app/tasks/ingestion_tasks.py:141-144
+      - app/tasks/vectorization_tasks.py:161-163
+      - app/models/engine.py:162-167
+  - 问题: 任务异常时先写 FAILED，随后抛异常；而 get_celery_session() 在异常分支会 rollback。
+  - 风险: 数据库里可能看不到真实失败状态和失败原因，和“任务可查询状态/失败原因记录”的目标冲突。
+  - 建议: 用独立 session持久化失败状态，或先显式提交再 retry。
+
+  ———
+
+  ## MEDIUM
+
+  ### 5) MinIO 下载流未显式关闭，存在连接泄漏风险
+
+  - 位置: app/tasks/ingestion_tasks.py:173-178
+  - 问题: minio_client.get_object() 返回对象只读不关。
+  - 风险: 大量文档处理时可能耗尽连接/句柄。
+  - 建议: finally 里补 close() / release_conn()。
+
+  ### 6) bcrypt 在 async 请求路径里同步执行，会阻塞事件循环
+
+  - 位置:
+      - app/services/auth_service.py:31, 43
+      - app/core/security.py:25-29, 39-42
+  - 问题: 注册和登录直接调用同步 bcrypt。
+  - 风险: 并发登录时拖慢整个 FastAPI async 服务。
+  - 建议: 用 asyncio.to_thread() 或线程池执行密码哈希/校验。
+
+  ### 7) 检索热路径每次先做两次 count，额外增加数据库压力
+
+  - 位置: app/services/retrieval/retrieval_service.py:174-179, 243-256
+  - 问题: 每次 retrieval 在真正检索前都先查“有没有向量化数据”。
+  - 风险: 高频请求下多出无意义 DB 开销。
+  - 建议: 用缓存/轻量 exists 替代 count(*)。
+
+  ———
+
+  ### 8) 静态检查门禁没有真正落地
+
+  - 证据:
+      - mypy ...：103 errors
+      - ruff check app：大量告警（完整跑出来 1261 条，多数是 RUF/全角标点与风格问题）
+  - 代表性问题:
+      - app/services/message_service.py:109 调用了不存在的 ConversationRepository.touch
+      - app/api/chat_runs.py:213-220 存在 union 属性访问不安全
+  - 影响: 配置上是“严格”，实际上门禁没收敛，后续改动的回归风险更难判断。
+  - 建议:
+      - 先优先清理生产代码的 mypy 错误
+      - 再决定 Ruff 是否要继续禁止中文全角标点，否则规则和注释风格冲突很大
+
+  ———
+
+  # 正向评价
+
+  - 测试覆盖面不错，259 个测试全过
+  - app/tests/conftest.py 有测试库保护，避免误打主库，这点很好
+  - service/repository 分层基本清晰
+  - SSE 并发连接限制用了 Lua 脚本，思路是对的
+
+  ———
+
+  # 最终建议
+
+  当前代码库不建议直接进入上线/冻结阶段。
+  建议先修复这 4 项高优先级（其中 1、4 已于 2026-04-15 修复）：
+
+  1. [已修复] 补齐 rerank 运行时依赖 / 启动验证
+  2. 强制配置固定 JWT 密钥
+  3. 给登录/注册加限流
+  4. [已修复] 修正 Celery 失败状态回滚问题
+
+  ———
+
+  Changed files: 无
+  Simplifications made: 无
+  Remaining risks: 本次为当前快照级审查，不是 diff 级审查

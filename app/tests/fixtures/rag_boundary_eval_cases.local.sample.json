@@ -1,0 +1,23 @@
+[
+  {
+    "id": "sample_real_course_misroute",
+    "category": "course_material",
+    "query": "老师当时怎么解释 PMF？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "sample_real_project_misroute",
+    "category": "project_code",
+    "query": "这个仓库里的聊天流是怎么恢复的？",
+    "history": [],
+    "expected_use_kb": true
+  },
+  {
+    "id": "sample_real_direct_override",
+    "category": "direct_override",
+    "query": "不要检索，直接解释 MVP 是什么",
+    "history": [],
+    "expected_use_kb": false
+  }
+]
