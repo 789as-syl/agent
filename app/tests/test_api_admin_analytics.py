@@ -13,6 +13,27 @@ from app.models.knowledge_point import KnowledgePoint
 from app.models.question_bank import Question, QuestionBank, QuestionType
 from app.models.question_knowledge_point import QuestionKnowledgePoint
 from app.models.retrieval_log import RetrievalLog
+from app.repositories.admin_analytics_repo import normalize_dashboard_breakdown_items
+
+EXPECTED_BREAKDOWN_LABELS = {
+    "direct_only": "直接命中",
+    "mapped_only": "映射命中",
+    "hybrid": "混合命中",
+    "empty": "未命中",
+}
+
+
+def test_normalize_dashboard_breakdown_items_repairs_placeholder_labels() -> None:
+    normalized = normalize_dashboard_breakdown_items(
+        [
+            {"key": "direct_only", "label": "????", "value": 1},
+            {"key": "mapped_only", "label": "   ", "value": 2},
+            {"key": "hybrid", "label": None, "value": 3},
+            {"key": "empty", "label": "???", "value": 4},
+        ]
+    )
+
+    assert {item["key"]: item["label"] for item in normalized} == EXPECTED_BREAKDOWN_LABELS
 
 
 class TestAdminDashboard:
@@ -35,6 +56,7 @@ class TestAdminDashboard:
         assert isinstance(payload["trends"], list)
         assert isinstance(payload["result_breakdown"], list)
         assert isinstance(payload["knowledge_heat"], list)
+        assert {item["key"]: item["label"] for item in payload["result_breakdown"]} == EXPECTED_BREAKDOWN_LABELS
 
     @pytest.mark.asyncio
     async def test_dashboard_with_logs_returns_aggregates(
@@ -88,6 +110,7 @@ class TestAdminDashboard:
         assert payload["metrics"]["request_count"] >= 2
         assert payload["metrics"]["hit_rate"] > 0
         assert payload["metrics"]["document_count"] >= 1
+        assert {item["key"]: item["label"] for item in payload["result_breakdown"]} == EXPECTED_BREAKDOWN_LABELS
 
     @pytest.mark.asyncio
     async def test_dashboard_supports_evidence_sidecar_fields(

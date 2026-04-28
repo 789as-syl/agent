@@ -94,6 +94,12 @@ DURABLE_HISTORY_FORBIDDEN_KEYS = frozenset(
         "reasoning_content",
         "provider_response",
         "tool_call_payload",
+        "evidence_blocks",
+        "anchor_chunk_indices",
+        "provenance",
+        "score",
+        "similarity",
+        "rerank_score",
     }
 )
 

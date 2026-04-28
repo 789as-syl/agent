@@ -13,6 +13,8 @@ import type {
   QuestionImportResponse,
   QuestionVectorizeRequest,
   VectorizationJobResponse,
+  VectorizationJobListResponse,
+  VectorizationJobRetryResponse,
   QuestionKnowledgePointLink,
 } from '../types'
 
@@ -29,6 +31,8 @@ const adminQuestionsApi = createAdminQuestionsApi<
   QuestionImportResponse,
   QuestionVectorizeRequest,
   VectorizationJobResponse,
+  VectorizationJobListResponse,
+  VectorizationJobRetryResponse,
   QuestionKnowledgePointLink
 >(apiClient)
 
@@ -45,7 +49,9 @@ export const {
   updateQuestion,
   deleteQuestion,
   importQuestions,
+  listVectorizationJobs,
   getVectorizationJob,
+  retryVectorizationJob,
   linkKnowledgePoints,
   unlinkKnowledgePoint,
 } = adminQuestionsApi

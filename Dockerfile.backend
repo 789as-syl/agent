@@ -1,0 +1,27 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml ./
+COPY alembic.ini ./
+COPY alembic ./alembic
+COPY app ./app
+COPY deploy/docker/start-api.sh /usr/local/bin/start-api
+COPY deploy/docker/start-worker.sh /usr/local/bin/start-worker
+
+RUN chmod +x /usr/local/bin/start-api /usr/local/bin/start-worker \
+    && pip install --upgrade pip \
+    && pip install -e .
+
+EXPOSE 8000
+
+CMD ["start-api"]
+

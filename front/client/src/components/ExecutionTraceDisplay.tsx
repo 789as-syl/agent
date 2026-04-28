@@ -3,6 +3,36 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle, ChevronDown, ChevronRight, CircleDashed, Loader2, ShieldAlert, Sparkles } from 'lucide-react'
 
 import type { ExecutionTraceEntry } from '../types'
+import { getTraceAnswerBasis } from '../pages/chat/message-utils'
+import type { AnswerBasis } from '../pages/chat/streaming-session'
+
+const ANSWER_BASIS_COPY: Record<AnswerBasis, { label: string; detail: string; className: string }> = {
+  knowledge_backed: {
+    label: '知识库证据回答',
+    detail: '本轮回答已使用知识库检索证据。',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  direct: {
+    label: '直接回答',
+    detail: '本轮未使用知识库证据，回答来自模型上下文与通用能力。',
+    className: 'border-sky-200 bg-sky-50 text-sky-700',
+  },
+  retrieval_unavailable: {
+    label: '检索不可用',
+    detail: '知识库检索本轮不可用，回答可信边界已降级。',
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  },
+  evidence_insufficient: {
+    label: '证据不足',
+    detail: '未找到足够知识库证据支撑完整回答。',
+    className: 'border-orange-200 bg-orange-50 text-orange-700',
+  },
+  needs_clarification: {
+    label: '需要澄清',
+    detail: '问题仍需要补充信息后才能继续。',
+    className: 'border-violet-200 bg-violet-50 text-violet-700',
+  },
+}
 
 function getTraceIcon(entry: ExecutionTraceEntry) {
   if (entry.status === 'error') {
@@ -55,15 +85,15 @@ export default function ExecutionTraceDisplay({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const answerBasis = useMemo(() => getTraceAnswerBasis(trace), [trace])
   const visibleTrace = useMemo(
     () => trace.filter((entry) => (
       entry.kind !== 'reasoning'
-      && entry.decision_code !== 'direct_answer'
     )),
     [trace]
   )
 
-  if (visibleTrace.length === 0) return null
+  if (visibleTrace.length === 0 && !answerBasis) return null
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80">
@@ -88,6 +118,12 @@ export default function ExecutionTraceDisplay({
             className="overflow-hidden"
           >
             <div className="space-y-1.5 border-t border-slate-200 px-3 py-2">
+              {answerBasis && (
+                <div className={`rounded-lg border px-2 py-2 text-xs ${ANSWER_BASIS_COPY[answerBasis].className}`}>
+                  <p className="font-semibold">{ANSWER_BASIS_COPY[answerBasis].label}</p>
+                  <p className="mt-0.5 leading-5 opacity-90">{ANSWER_BASIS_COPY[answerBasis].detail}</p>
+                </div>
+              )}
               {visibleTrace.map((entry) => {
                 const canExpand = Boolean(
                   entry.detail

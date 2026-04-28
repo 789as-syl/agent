@@ -7,11 +7,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.trace_projector import project_run_event
 from app.core.exceptions import NotFoundError
 from app.repositories.chat_run_repo import ChatRunRepository
 from app.repositories.run_event_repo import RunEventRepository
 from app.schemas.admin_trace_lab import AdminTraceRunSummary, AdminTraceTimelineItem
+from app.services.trace_projection import project_run_event
 
 
 class AdminTraceLabService:

@@ -1,11 +1,4 @@
-import type { StreamingSessionState } from './streaming-session'
-
-export interface ChatRunSnapshot {
-  conversationId: string
-  runId: string | null
-  lastEventId?: string | null
-  session: StreamingSessionState
-}
+import type { ChatRunControllerSnapshot } from './chat-run-machine'
 
 const SNAPSHOT_KEY_PREFIX = 'client-chat-run-snapshot'
 
@@ -13,13 +6,13 @@ function getSnapshotKey(conversationId: string) {
   return `${SNAPSHOT_KEY_PREFIX}:${conversationId}`
 }
 
-export function loadChatRunSnapshot(conversationId: string): ChatRunSnapshot | null {
+export function loadChatRunSnapshot(conversationId: string): ChatRunControllerSnapshot | null {
   if (typeof window === 'undefined') return null
 
   try {
     const raw = window.sessionStorage.getItem(getSnapshotKey(conversationId))
     if (!raw) return null
-    const parsed = JSON.parse(raw) as ChatRunSnapshot
+    const parsed = JSON.parse(raw) as ChatRunControllerSnapshot
     if (!parsed?.conversationId || parsed.conversationId !== conversationId) return null
     return parsed
   } catch {
@@ -27,7 +20,7 @@ export function loadChatRunSnapshot(conversationId: string): ChatRunSnapshot | n
   }
 }
 
-export function saveChatRunSnapshot(snapshot: ChatRunSnapshot): void {
+export function saveChatRunSnapshot(snapshot: ChatRunControllerSnapshot): void {
   if (typeof window === 'undefined') return
 
   try {

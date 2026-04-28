@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "lint": "eslint .",
-    "test:trace": "tsc -p tsconfig.trace-tests.json --outDir .tmp-trace-tests && node --test --test-isolation=none .tmp-trace-tests/client/src/pages/chat/streaming-session.trace.test.js",
+    "test:trace": "tsc -p tsconfig.trace-tests.json --outDir .tmp-trace-tests && node --test --test-isolation=none .tmp-trace-tests/client/src/pages/chat/streaming-session.trace.test.js .tmp-trace-tests/client/src/pages/chat/chat-run-machine.trace.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

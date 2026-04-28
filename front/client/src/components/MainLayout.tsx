@@ -14,6 +14,7 @@ import {
   CalendarDays,
   PanelLeftClose,
   PanelLeftOpen,
+  GraduationCap,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore, useConversationStore } from '../store'
@@ -60,7 +61,7 @@ export default function MainLayout() {
 
   useEffect(() => {
     const conversationId = location.pathname.split('/')[1]
-    if (!conversationId || conversationId === '') {
+    if (!conversationId || conversationId === '' || conversationId === 'learning') {
       setCurrentConversation(null)
       return
     }
@@ -68,7 +69,9 @@ export default function MainLayout() {
     const conversation = conversations.find((c) => c.id === conversationId)
     if (conversation) {
       setCurrentConversation(conversation)
+      return
     }
+    setCurrentConversation(null)
   }, [location.pathname, conversations, setCurrentConversation])
 
   const groupedConversations = useMemo(() => {
@@ -210,6 +213,31 @@ export default function MainLayout() {
             <Plus className="h-4 w-4" />
             {!sidebarCollapsed && '新建对话'}
           </button>
+          {!sidebarCollapsed && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => navigate('/')}
+                className={`rounded-xl border px-3 py-2 text-sm ${
+                  location.pathname === '/' || /^\/[0-9a-f-]+$/i.test(location.pathname)
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                对话区
+              </button>
+              <button
+                onClick={() => navigate('/learning')}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+                  location.pathname.startsWith('/learning')
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <GraduationCap className="h-4 w-4" />
+                学习中心
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-4">
@@ -343,7 +371,7 @@ export default function MainLayout() {
               <Menu className="h-5 w-5" />
             </button>
             <h2 className="truncate text-base font-semibold text-slate-900 md:text-lg">
-              {currentConversation?.title || '新对话'}
+              {location.pathname.startsWith('/learning') ? '学习中心' : currentConversation?.title || '新对话'}
             </h2>
           </div>
         </header>

@@ -7,7 +7,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.trace_projector import project_sse_event_dict
 from app.api.dependencies import invalidate_user_cache
 from app.core.exceptions import AppError, NotFoundError, ValidationError
 from app.core.log_config import get_logger
@@ -22,6 +21,7 @@ from app.schemas.admin_users import (
     AdminConversationSummaryResponse,
     AdminUserResponse,
 )
+from app.services.trace_projection import project_sse_event_dict
 
 logger = get_logger(__name__)
 

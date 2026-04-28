@@ -1,0 +1,172 @@
+services:
+  postgres:
+    image: paradedb/paradedb:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-knowledge_base}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kb-network
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - kb-network
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
+    volumes:
+      - minio_prod_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - kb-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    env_file:
+      - deploy/.env.production.sample
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-knowledge_base}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      MINIO_ENDPOINT: ${PROD_STORAGE_DOMAIN:-storage.example.com}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      CORS_ORIGINS: ${PROD_CORS_ORIGINS:-http://app.example.com,http://admin.example.com}
+      DATABASE_REQUIRE_HEAD_REVISION: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/ready >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - kb-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    command: ["/usr/local/bin/start-worker"]
+    env_file:
+      - deploy/.env.production.sample
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-knowledge_base}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      MINIO_ENDPOINT: ${PROD_STORAGE_DOMAIN:-storage.example.com}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change-me}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      CORS_ORIGINS: ${PROD_CORS_ORIGINS:-http://app.example.com,http://admin.example.com}
+      DATABASE_REQUIRE_HEAD_REVISION: "true"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - kb-network
+
+  client-web:
+    build:
+      context: .
+      dockerfile: front/client/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - kb-network
+
+  admin-web:
+    build:
+      context: .
+      dockerfile: front/admin/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - kb-network
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      APP_DOMAIN: ${PROD_APP_DOMAIN:-app.example.com}
+      ADMIN_DOMAIN: ${PROD_ADMIN_DOMAIN:-admin.example.com}
+      STORAGE_DOMAIN: ${PROD_STORAGE_DOMAIN:-storage.example.com}
+    volumes:
+      - ./deploy/nginx/gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      client-web:
+        condition: service_started
+      admin-web:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      kb-network:
+        aliases:
+          - ${PROD_APP_DOMAIN:-app.example.com}
+          - ${PROD_ADMIN_DOMAIN:-admin.example.com}
+          - ${PROD_STORAGE_DOMAIN:-storage.example.com}
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  minio_prod_data:
+
+networks:
+  kb-network:
+    driver: bridge
+

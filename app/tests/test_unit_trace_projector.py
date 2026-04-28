@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.agents.trace_projector import REDACTION_TEXT, project_run_event, redact_trace_payload
+from app.services.trace_projection import REDACTION_TEXT, project_run_event, redact_trace_payload
 
 
 def test_trace_projector_redacts_raw_reasoning_and_provider_payload() -> None:

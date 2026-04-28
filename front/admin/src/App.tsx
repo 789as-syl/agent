@@ -11,6 +11,10 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const KnowledgeManagementPage = lazy(() => import('./pages/KnowledgeManagementPage'))
 const QuestionManagementPage = lazy(() => import('./pages/QuestionManagementPage'))
 const KnowledgeGraphPage = lazy(() => import('./pages/KnowledgeGraphPage'))
+const OperationsCenterPage = lazy(() => import('./pages/OperationsCenterPage'))
+const TraceLabPage = lazy(() => import('./pages/TraceLabPage'))
+const RagEvalLabPage = lazy(() => import('./pages/RagEvalLabPage'))
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'))
 const UserAccountManagementPage = lazy(() => import('./pages/UserAccountManagementPage'))
 const UserSessionAuditPage = lazy(() => import('./pages/UserSessionAuditPage'))
 
@@ -51,6 +55,10 @@ function App() {
                 <Route path="/knowledge" element={<KnowledgeManagementPage />} />
                 <Route path="/questions" element={<QuestionManagementPage />} />
                 <Route path="/graph" element={<KnowledgeGraphPage />} />
+                <Route path="/operations" element={<OperationsCenterPage />} />
+                <Route path="/trace-lab" element={<TraceLabPage />} />
+                <Route path="/rag-eval" element={<RagEvalLabPage />} />
+                <Route path="/audit-logs" element={<AuditLogPage />} />
                 <Route path="/users" element={<UserAccountManagementPage />} />
                 <Route path="/user-sessions" element={<UserSessionAuditPage />} />
               </Route>

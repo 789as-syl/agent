@@ -5,6 +5,7 @@ from langchain_core.messages import ToolMessage
 
 from app.agents.native_agent_runner import (
     CanonicalTrace,
+    _build_clarification_trace,
     _build_tool_result_trace,
     _canonical_trace_to_entry,
     _canonical_trace_to_sse_data,
@@ -161,3 +162,51 @@ def test_history_trace_normalization_preserves_semantic_key_and_cleans_metadata(
     assert normalized is not None
     assert normalized[0]["semantic_key"] == "tool_result:retrieval_failed:knowledge_retrieval:0:completed"
     assert normalized[0]["metadata"] == {"tool_name": "knowledge_retrieval"}
+
+
+def test_clarification_trace_uses_needs_clarification_answer_basis() -> None:
+    trace = _build_clarification_trace(
+        interrupt_value={
+            "action_requests": [
+                {"name": "request_human_input", "args": {"prompt": "请补充项目阶段", "kind": "input"}}
+            ],
+            "review_configs": [{"allowed_decisions": ["edit", "reject"]}],
+        },
+        reasoning_accumulated="internal reasoning must not leak",
+    )
+
+    streamed = _canonical_trace_to_sse_data(trace)
+    persisted = _canonical_trace_to_entry(trace, step=3)
+
+    assert trace.answer_basis == "needs_clarification"
+    assert streamed.answer_basis == "needs_clarification"
+    assert persisted["answer_basis"] == "needs_clarification"
+    assert "internal reasoning" not in str(streamed.model_dump())
+    assert "internal reasoning" not in str(persisted)
+
+
+def test_retrieval_failed_label_stays_internal_when_trace_is_serialized() -> None:
+    trace = _build_tool_result_trace(
+        tool_name="knowledge_retrieval",
+        parsed={
+            "success": False,
+            "tool": "knowledge_retrieval",
+            "message": "知识库检索暂不可用，已切换为直接回答",
+            "result_count": 0,
+            "retrieval_failed": True,
+            "payload": {"error_code": "RETRIEVAL_PROVIDER_UNAVAILABLE"},
+        },
+        raw_content={"success": False, "tool": "knowledge_retrieval"},
+    )
+
+    streamed = _canonical_trace_to_sse_data(trace)
+    persisted = _canonical_trace_to_entry(trace, step=4)
+
+    assert streamed.answer_basis == "retrieval_unavailable"
+    assert persisted["answer_basis"] == "retrieval_unavailable"
+    assert streamed.decision_code == "retrieval_unavailable"
+    assert persisted["decision_code"] == "retrieval_unavailable"
+    serialized_user_payload = str(streamed.model_dump(exclude_none=True)) + str(persisted)
+    assert "retrieval_failed': True" not in serialized_user_payload
+    assert "payload" not in serialized_user_payload
+    assert "error_code" not in serialized_user_payload

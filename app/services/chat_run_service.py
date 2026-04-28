@@ -19,6 +19,21 @@ logger = get_logger(__name__)
 ACTIVE_RUN_STATUSES = {RunStatus.PENDING, RunStatus.RUNNING}
 
 
+def build_client_message_shell_state(client_message_id: str | None) -> dict[str, Any]:
+    if client_message_id is None:
+        return {}
+    normalized = str(client_message_id).strip()
+    if not normalized:
+        return {}
+    return {"client_message_id": normalized}
+
+
+def get_run_client_message_id(run: ChatRun) -> str | None:
+    state_json = run.shell_state_json if isinstance(run.shell_state_json, dict) else {}
+    value = state_json.get("client_message_id")
+    return value if isinstance(value, str) and value.strip() else None
+
+
 class ChatRunService:
     """Manage chat-run rows while keeping runtime truth inside LangGraph checkpoints."""
 
@@ -31,6 +46,7 @@ class ChatRunService:
         conversation_id: uuid.UUID,
         user_id: uuid.UUID,
         query: str,
+        client_message_id: str | None = None,
     ) -> ChatRun:
         await self.ensure_conversation_access(conversation_id=conversation_id, user_id=user_id)
         await self._lock_conversation(conversation_id)
@@ -47,7 +63,7 @@ class ChatRunService:
             user_id=user_id,
             query=query,
             status=RunStatus.PENDING,
-            shell_state_json={},
+            shell_state_json=build_client_message_shell_state(client_message_id),
         )
         self.db_session.add(run)
         await self.db_session.flush()
@@ -215,7 +231,13 @@ class ChatRunService:
         run.status = RunStatus.INTERRUPTED
         await self.db_session.flush()
 
-    async def retry_run(self, run_id: uuid.UUID, user_id: uuid.UUID) -> ChatRun:
+    async def retry_run(
+        self,
+        run_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        client_message_id: str | None = None,
+    ) -> ChatRun:
         run = await self.get_run(run_id, user_id)
         if run.status not in (RunStatus.FAILED, RunStatus.INTERRUPTED):
             raise ValueError(f"Cannot retry run with status: {run.status}")
@@ -236,14 +258,20 @@ class ChatRunService:
             status=RunStatus.PENDING,
             parent_run_id=run.id,
             retry_of_run_id=run.id,
-            shell_state_json={},
+            shell_state_json=build_client_message_shell_state(client_message_id),
         )
         self.db_session.add(retry_run)
         await self.db_session.flush()
         await self.db_session.refresh(retry_run)
         return retry_run
 
-    async def regenerate_run(self, run_id: uuid.UUID, user_id: uuid.UUID) -> ChatRun:
+    async def regenerate_run(
+        self,
+        run_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        client_message_id: str | None = None,
+    ) -> ChatRun:
         run = await self.get_run(run_id, user_id)
         if run.status != RunStatus.SUCCESS:
             raise ValueError(f"Cannot regenerate run with status: {run.status}")
@@ -264,7 +292,7 @@ class ChatRunService:
             status=RunStatus.PENDING,
             parent_run_id=run.id,
             retry_of_run_id=None,
-            shell_state_json={},
+            shell_state_json=build_client_message_shell_state(client_message_id),
         )
         self.db_session.add(regenerate_run)
         await self.db_session.flush()

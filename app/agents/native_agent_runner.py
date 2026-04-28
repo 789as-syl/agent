@@ -28,6 +28,7 @@ from app.agents.runtime.native_model import message_content_to_blocks, message_c
 from app.core.langsmith import build_langsmith_metadata, langsmith_enabled
 from app.core.log_config import get_logger
 from app.schemas.sse_event import (
+    AnswerBasis,
     DoneData,
     ErrorData,
     ExecutionTraceData,
@@ -63,6 +64,11 @@ class TraceEvidenceItem:
     detail: str | None = None
     event_id: str | None = None
     reasoning_range: TraceAnchor | None = None
+    title: str | None = None
+    snippet: str | None = None
+    source_type: str | None = None
+    locator: str | None = None
+    evidence_type: str | None = None
 
 
 @dataclass(slots=True)
@@ -76,6 +82,7 @@ class CanonicalTrace:
     tool_input: dict[str, Any] | None = None
     result_count: int | None = None
     retrieval_failed: bool | None = None
+    answer_basis: AnswerBasis | None = None
     evidence: list[TraceEvidenceItem] = field(default_factory=list)
     reasoning_anchor: TraceAnchor | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -127,6 +134,7 @@ class NativeAgentRunner:
         user_id: str,
         query: str,
         pending_resume_value: dict[str, Any] | None = None,
+        client_message_id: str | None = None,
         should_interrupt: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
         start_time = time.time()
@@ -174,6 +182,7 @@ class NativeAgentRunner:
                     final_content_blocks=final_content_blocks,
                     execution_trace=execution_trace,
                     reasoning_redacted=False,
+                    client_message_id=client_message_id,
                 )
                 step += 1
                 yield SSEEvent.create_event(
@@ -480,6 +489,7 @@ class NativeAgentRunner:
                 final_content_blocks=final_content_blocks,
                 execution_trace=execution_trace,
                 reasoning_redacted=bool(reasoning_accumulated),
+                client_message_id=client_message_id,
             )
             step += 1
             yield SSEEvent.create_event(
@@ -533,6 +543,7 @@ class NativeAgentRunner:
         final_content_blocks: list[dict[str, Any]] | None,
         execution_trace: list[dict[str, Any]] | None,
         reasoning_redacted: bool,
+        client_message_id: str | None = None,
     ) -> None:
         await self.memory_service.persist_run_messages(
             conversation_id=conversation_id,
@@ -542,6 +553,7 @@ class NativeAgentRunner:
             execution_trace=execution_trace,
             reasoning_redacted=reasoning_redacted,
             run_id=run_id,
+            client_message_id=client_message_id,
         )
         # The streaming endpoint persists run events using an isolated session.
         # Commit message rows here before the later `done` event is marked
@@ -687,11 +699,12 @@ def _canonical_trace_to_sse_data(trace: CanonicalTrace) -> ExecutionTraceData:
         title=trace.title,
         detail=trace.detail,
         status=trace.status,
-        decision_code=trace.decision_code,
+        decision_code=_trace_visible_decision_code(trace),
         tool_name=trace.tool_name,
         tool_input=trace.tool_input,
         result_count=trace.result_count,
         retrieval_failed=None,
+        answer_basis=trace.answer_basis,
         semantic_key=semantic_key,
         evidence=[_trace_evidence_model(item) for item in trace.evidence] or None,
         reasoning_anchor=_trace_anchor_model(trace.reasoning_anchor),
@@ -710,8 +723,11 @@ def _canonical_trace_to_entry(trace: CanonicalTrace, *, step: int) -> dict[str, 
     }
     if trace.detail:
         payload["detail"] = trace.detail
-    if trace.decision_code:
-        payload["decision_code"] = trace.decision_code
+    visible_decision_code = _trace_visible_decision_code(trace)
+    if visible_decision_code:
+        payload["decision_code"] = visible_decision_code
+    if trace.answer_basis:
+        payload["answer_basis"] = trace.answer_basis
     if trace.evidence:
         payload["evidence"] = [_trace_evidence_payload(item) for item in trace.evidence]
     if trace.reasoning_anchor is not None:
@@ -733,7 +749,7 @@ def _canonical_trace_to_entry(trace: CanonicalTrace, *, step: int) -> dict[str, 
 def _trace_semantic_key(trace: CanonicalTrace) -> str:
     if trace.semantic_key:
         return trace.semantic_key
-    parts = [trace.kind, trace.decision_code or "", trace.tool_name or ""]
+    parts = [trace.kind, _trace_visible_decision_code(trace) or "", trace.tool_name or ""]
     if trace.kind == "tool_call" and trace.tool_input:
         parts.append(_stable_hash(trace.tool_input))
     elif trace.kind == "tool_result":
@@ -750,6 +766,12 @@ def _stable_hash(value: Any) -> str:
     except TypeError:
         payload = str(value)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _trace_visible_decision_code(trace: CanonicalTrace) -> str | None:
+    if trace.decision_code == "retrieval_failed" and trace.answer_basis == "retrieval_unavailable":
+        return "retrieval_unavailable"
+    return trace.decision_code
 
 
 def _safe_trace_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -804,6 +826,16 @@ def _trace_evidence_payload(item: TraceEvidenceItem) -> dict[str, Any]:
         payload["event_id"] = item.event_id
     if item.reasoning_range is not None:
         payload["reasoning_range"] = _trace_anchor_payload(item.reasoning_range)
+    if item.title:
+        payload["title"] = item.title
+    if item.snippet:
+        payload["snippet"] = item.snippet
+    if item.source_type:
+        payload["source_type"] = item.source_type
+    if item.locator:
+        payload["locator"] = item.locator
+    if item.evidence_type:
+        payload["evidence_type"] = item.evidence_type
     return payload
 
 
@@ -814,6 +846,11 @@ def _trace_evidence_model(item: TraceEvidenceItem) -> TraceEvidence:
         detail=item.detail,
         event_id=item.event_id,
         reasoning_range=_trace_anchor_model(item.reasoning_range),
+        title=item.title,
+        snippet=item.snippet,
+        source_type=item.source_type,
+        locator=item.locator,
+        evidence_type=item.evidence_type,
     )
 
 
@@ -851,6 +888,7 @@ def _build_direct_answer_trace(
         status="completed",
         detail="本轮未调用外部工具，基于模型已有上下文生成回答。",
         decision_code="direct_answer",
+        answer_basis="direct",
         semantic_key="decision:direct_answer",
     )
 
@@ -869,6 +907,7 @@ def _build_clarification_trace(
         status="completed",
         detail=prompt,
         decision_code="clarify_missing_context",
+        answer_basis="needs_clarification",
         evidence=evidence,
         reasoning_anchor=None,
         metadata={"strategy": "clarify"},
@@ -947,6 +986,12 @@ def _build_tool_result_trace(
         tool_name=tool_name,
         result_count=result_count,
         retrieval_failed=retrieval_failed,
+        answer_basis=_tool_result_answer_basis(
+            tool_name=tool_name,
+            success=success,
+            result_count=result_count,
+            retrieval_failed=retrieval_failed,
+        ),
         evidence=evidence,
         metadata=_tool_result_metadata(
             tool_name=tool_name,
@@ -1100,10 +1145,10 @@ def _tool_result_title(
 ) -> str:
     if tool_name == "knowledge_retrieval":
         if retrieval_failed or not success:
-            return "知识库检索失败"
+            return "知识库检索暂不可用"
         if result_count and result_count > 0:
-            return f"知识库命中 {result_count} 个证据块"
-        return "知识库未命中有效证据"
+            return f"已检索到 {result_count} 条知识库证据"
+        return "知识库证据不足"
     if tool_name == "web_search":
         if not success:
             return "外部搜索失败"
@@ -1125,16 +1170,24 @@ def _tool_result_detail(*, tool_name: str, parsed: dict[str, Any], raw_content: 
         detail_parts.append(message)
 
     if tool_name == "knowledge_retrieval":
-        evidence_blocks = parsed.get("evidence_blocks")
-        if isinstance(evidence_blocks, list) and evidence_blocks:
-            titles = [
-                str(item.get("title") or item.get("knowledge_point_id") or "").strip()
-                for item in evidence_blocks
-                if isinstance(item, dict)
-            ]
-            titles = [item for item in titles if item]
-            if titles:
-                detail_parts.append(f"命中证据：{'；'.join(titles[:3])}")
+        retrieval_failed = bool(parsed.get("retrieval_failed", False))
+        result_count = _safe_int(parsed.get("result_count", parsed.get("total_count")))
+        if retrieval_failed or not bool(parsed.get("success", not retrieval_failed)):
+            if not detail_parts:
+                detail_parts.append("知识库检索本轮不可用，回答已回退为非知识库证据模式。")
+        elif result_count and result_count > 0:
+            evidence_blocks = parsed.get("evidence_blocks")
+            if isinstance(evidence_blocks, list) and evidence_blocks:
+                titles = [
+                    str(item.get("title") or item.get("knowledge_point_id") or "").strip()
+                    for item in evidence_blocks
+                    if isinstance(item, dict)
+                ]
+                titles = [item for item in titles if item]
+                if titles:
+                    detail_parts.append(f"已使用知识库证据：{'；'.join(titles[:3])}")
+        else:
+            detail_parts.append("已尝试检索知识库，但当前没有足够证据支撑完整回答。")
     elif tool_name == "web_search":
         results = parsed.get("results")
         if isinstance(results, list) and results:
@@ -1162,7 +1215,7 @@ def _tool_result_decision_code(
 ) -> str:
     if tool_name == "knowledge_retrieval":
         if retrieval_failed or not success:
-            return "retrieval_failed"
+            return "retrieval_unavailable"
         return "retrieval_hit" if result_count and result_count > 0 else "retrieval_insufficient"
     if tool_name == "web_search":
         if not success:
@@ -1173,6 +1226,22 @@ def _tool_result_decision_code(
     return f"{tool_name}_completed" if success else f"{tool_name}_failed"
 
 
+def _tool_result_answer_basis(
+    *,
+    tool_name: str,
+    success: bool,
+    result_count: int | None,
+    retrieval_failed: bool,
+) -> AnswerBasis | None:
+    if tool_name != "knowledge_retrieval":
+        return None
+    if retrieval_failed or not success:
+        return "retrieval_unavailable"
+    if result_count and result_count > 0:
+        return "knowledge_backed"
+    return "evidence_insufficient"
+
+
 def _tool_result_evidence(
     *,
     tool_name: str,
@@ -1181,16 +1250,69 @@ def _tool_result_evidence(
     parsed: dict[str, Any],
 ) -> list[TraceEvidenceItem]:
     evidence: list[TraceEvidenceItem] = []
-    if result_count is not None:
-        evidence.append(
-            TraceEvidenceItem(
-                source="tool_result",
-                label="结果数量",
-                detail=str(result_count),
+    if tool_name == "knowledge_retrieval":
+        if retrieval_failed:
+            evidence.append(
+                TraceEvidenceItem(
+                    source="tool_result",
+                    label="知识库检索暂不可用",
+                    detail="本轮无法提供知识库证据，回答已回退为非知识库证据模式。",
+                    title="知识库检索暂不可用",
+                    snippet="本轮无法提供知识库证据，回答已回退为非知识库证据模式。",
+                    source_type="system",
+                    evidence_type="retrieval_status",
+                )
             )
-        )
-    if retrieval_failed:
-        evidence.append(TraceEvidenceItem(source="tool_result", label="检索失败"))
+            return evidence
+        if result_count is not None and result_count <= 0:
+            evidence.append(
+                TraceEvidenceItem(
+                    source="tool_result",
+                    label="知识库证据不足",
+                    detail="已尝试检索知识库，但当前没有足够证据支撑完整回答。",
+                    title="知识库证据不足",
+                    snippet="已尝试检索知识库，但当前没有足够证据支撑完整回答。",
+                    source_type="system",
+                    evidence_type="retrieval_status",
+                )
+            )
+            return evidence
+        evidence_blocks = parsed.get("evidence_blocks")
+        if isinstance(evidence_blocks, list):
+            for item in evidence_blocks[:3]:
+                if not isinstance(item, dict):
+                    continue
+                title = _compact_display_text(
+                    item.get("title") or item.get("knowledge_point_id"),
+                    max_chars=80,
+                )
+                if not title:
+                    continue
+                provenance = item.get("provenance")
+                evidence_type = _evidence_type(item.get("group_type"))
+                source_type = _evidence_source_type(
+                    provenance=provenance,
+                    fallback_group_type=evidence_type,
+                )
+                locator = _evidence_locator(provenance, evidence_type=evidence_type)
+                snippet = _build_user_visible_evidence_snippet(
+                    item.get("content") or item.get("snippet") or item.get("text"),
+                    source_type=source_type,
+                    evidence_type=evidence_type,
+                )
+                detail = _legacy_evidence_detail(locator=locator, snippet=snippet)
+                evidence.append(
+                    TraceEvidenceItem(
+                        source="knowledge_retrieval",
+                        label=title,
+                        detail=detail,
+                        title=title,
+                        snippet=snippet,
+                        source_type=source_type,
+                        locator=locator,
+                        evidence_type=evidence_type,
+                    )
+                )
     if tool_name == "math_calculator" and "result" in parsed:
         evidence.append(
             TraceEvidenceItem(
@@ -1200,6 +1322,102 @@ def _tool_result_evidence(
             )
         )
     return evidence
+
+
+EVIDENCE_SNIPPET_MAX_CHARS = 180
+EVIDENCE_LOCATOR_MAX_CHARS = 48
+
+
+def _compact_display_text(value: Any, *, max_chars: int) -> str | None:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1]}…"
+
+
+def _compact_evidence_snippet(value: Any) -> str | None:
+    return _compact_display_text(value, max_chars=EVIDENCE_SNIPPET_MAX_CHARS)
+
+
+def _build_user_visible_evidence_snippet(
+    value: Any,
+    *,
+    source_type: str | None,
+    evidence_type: str | None,
+) -> str | None:
+    raw_text = str(value or "").strip()
+    if not raw_text:
+        return None
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    if source_type == "question_bank" or evidence_type == "question":
+        for prefix in ("题目：", "题干："):
+            line = next((item for item in lines if item.startswith(prefix)), None)
+            if line:
+                return _compact_evidence_snippet(line)
+        first_line = lines[0] if lines else raw_text
+        return _compact_evidence_snippet(first_line)
+    filtered_lines = [
+        line
+        for line in lines
+        if not line.startswith("答案：") and not line.startswith("解析：")
+    ]
+    text = " ".join(filtered_lines) if filtered_lines else raw_text
+    return _compact_evidence_snippet(text)
+
+
+def _evidence_source_type(*, provenance: Any, fallback_group_type: Any) -> str | None:
+    if isinstance(provenance, list):
+        for entry in provenance:
+            if not isinstance(entry, dict):
+                continue
+            source_type = _compact_display_text(entry.get("source_type"), max_chars=40)
+            if source_type:
+                return source_type
+    group_type = _compact_display_text(fallback_group_type, max_chars=40)
+    if group_type == "question":
+        return "question_bank"
+    return "document"
+
+
+def _evidence_type(value: Any) -> str | None:
+    return _compact_display_text(value or "section", max_chars=40)
+
+
+def _evidence_locator(provenance: Any, *, evidence_type: str | None) -> str | None:
+    if evidence_type == "question":
+        return "题库题目"
+    if not isinstance(provenance, list):
+        return None
+    locators: list[str] = []
+    for entry in provenance:
+        if not isinstance(entry, dict):
+            continue
+        page = entry.get("page_number")
+        slide = entry.get("slide_number")
+        table = entry.get("table_index") or entry.get("table_number")
+        chunk = entry.get("chunk_index")
+        section_heading = entry.get("section_heading") or entry.get("heading") or entry.get("section_title")
+        if page:
+            locators.append(f"第 {page} 页")
+        elif slide:
+            locators.append(f"第 {slide} 页幻灯片")
+        elif table:
+            locators.append(f"表 {table}")
+        elif section_heading:
+            locators.append(str(section_heading).strip())
+        elif chunk:
+            locators.append(f"片段 {chunk}")
+        if len(locators) >= 2:
+            break
+    return _compact_display_text(" / ".join(locators), max_chars=EVIDENCE_LOCATOR_MAX_CHARS)
+
+
+def _legacy_evidence_detail(*, locator: str | None, snippet: str | None) -> str | None:
+    if locator and snippet:
+        return _compact_display_text(f"{locator} · {snippet}", max_chars=200)
+    return locator or snippet
 
 
 REASONING_MAX_EVENT_CHARS = 400

@@ -34,9 +34,10 @@ class _FakeNativeRunner:
         user_id: str,
         query: str,
         pending_resume_value: dict[str, object] | None = None,
+        client_message_id: str | None = None,
         should_interrupt=None,
     ):
-        del run_id, user_id, should_interrupt
+        del run_id, user_id, client_message_id, should_interrupt
         step = 1
         if pending_resume_value:
             yield SSEEvent.create_event(
@@ -220,6 +221,27 @@ class TestChatRunCreate:
         assert data["status"] == "pending"
 
     @pytest.mark.asyncio
+    async def test_create_chat_run_persists_client_message_id_in_shell_state(
+        self,
+        client: AsyncClient,
+        auth_headers: dict[str, str],
+        db_session: AsyncSession,
+        test_user: User,
+    ) -> None:
+        conv = await _create_conversation(db_session, test_user)
+
+        response = await client.post(
+            f"/api/v1/conversations/{conv.id}/runs",
+            headers=auth_headers,
+            json={"query": "What is the capital of France?", "client_message_id": "client-create-1"},
+        )
+
+        assert response.status_code == 201
+        run = await db_session.scalar(select(ChatRun).where(ChatRun.id == UUID(response.json()["run_id"])))
+        assert run is not None
+        assert run.shell_state_json == {"client_message_id": "client-create-1"}
+
+    @pytest.mark.asyncio
     async def test_create_chat_run_conflict_when_active_run_exists(
         self,
         client: AsyncClient,
@@ -392,6 +414,74 @@ class TestChatRunEvents:
         trace_payload = response.json()["events"][0]["trace_data"]
         assert trace_payload["decision_code"] == "tool_call_knowledge_retrieval"
         assert trace_payload["evidence"][0]["label"] == "命中问题信号"
+
+    @pytest.mark.asyncio
+    async def test_get_execution_trace_playback_preserves_answer_basis_and_structured_evidence(
+        self,
+        client: AsyncClient,
+        auth_headers: dict[str, str],
+        db_session: AsyncSession,
+        test_user: User,
+    ) -> None:
+        conv = await _create_conversation(db_session, test_user)
+        run = ChatRun(
+            id=uuid4(),
+            conversation_id=conv.id,
+            user_id=test_user.id,
+            query="hello",
+            status=RunStatus.SUCCESS,
+            shell_state_json={},
+        )
+        db_session.add(run)
+        await db_session.flush()
+        event = SSEEvent.create_event(
+            event_type="execution_trace",
+            request_id=str(run.id),
+            conversation_id=str(conv.id),
+            step=1,
+            trace_data=ExecutionTraceData(
+                kind="tool_result",
+                title="知识库命中 1 个证据块",
+                status="completed",
+                decision_code="retrieval_hit",
+                answer_basis="knowledge_backed",
+                evidence=[
+                    {
+                        "source": "knowledge_retrieval",
+                        "label": "商业模式画布",
+                        "title": "商业模式画布",
+                        "snippet": "用于描述价值主张、客户细分和收入来源的结构化工具。",
+                        "source_type": "courseware",
+                        "locator": "page 12",
+                        "evidence_type": "retrieved_chunk",
+                    }
+                ],
+            ),
+        )
+        db_session.add(
+            RunEvent(
+                run_id=run.id,
+                conversation_id=conv.id,
+                user_id=test_user.id,
+                event_id=event.event_id,
+                event_type=event.event_type,
+                step=event.step,
+                is_final=False,
+                event_json=event.model_dump(mode="python"),
+            )
+        )
+        await db_session.commit()
+
+        response = await client.get(f"/api/v1/conversations/{conv.id}/runs/{run.id}/events", headers=auth_headers)
+
+        assert response.status_code == 200
+        trace_data = response.json()["events"][0]["trace_data"]
+        assert trace_data["answer_basis"] == "knowledge_backed"
+        assert trace_data["evidence"][0]["title"] == "商业模式画布"
+        assert trace_data["evidence"][0]["snippet"] == "用于描述价值主张、客户细分和收入来源的结构化工具。"
+        assert trace_data["evidence"][0]["source_type"] == "courseware"
+        assert trace_data["evidence"][0]["locator"] == "page 12"
+        assert trace_data["evidence"][0]["evidence_type"] == "retrieved_chunk"
 
     @pytest.mark.asyncio
     async def test_get_reasoning_delta_event_playback(
@@ -816,6 +906,96 @@ class TestChatRunLineage:
         regen_run = await db_session.scalar(select(ChatRun).where(ChatRun.id == UUID(regen_resp.json()["run_id"])))
         assert regen_run is not None
         assert regen_run.parent_run_id == success_run.id
+
+    @pytest.mark.asyncio
+    async def test_retry_and_regenerate_accept_fresh_client_message_ids(
+        self,
+        client: AsyncClient,
+        auth_headers: dict[str, str],
+        db_session: AsyncSession,
+        test_user: User,
+    ) -> None:
+        conv_retry = await _create_conversation(db_session, test_user, title="Retry Client Id Conv")
+        conv_regen = await _create_conversation(db_session, test_user, title="Regen Client Id Conv")
+        failed_run = ChatRun(
+            id=uuid4(),
+            conversation_id=conv_retry.id,
+            user_id=test_user.id,
+            query="hello",
+            status=RunStatus.FAILED,
+            shell_state_json={"client_message_id": "old-client-id"},
+        )
+        success_run = ChatRun(
+            id=uuid4(),
+            conversation_id=conv_regen.id,
+            user_id=test_user.id,
+            query="hello",
+            status=RunStatus.SUCCESS,
+            shell_state_json={"client_message_id": "old-regen-id"},
+        )
+        db_session.add_all([failed_run, success_run])
+        await db_session.flush()
+
+        retry_resp = await client.post(
+            f"/api/v1/conversations/{conv_retry.id}/runs/{failed_run.id}/retry",
+            headers=auth_headers,
+            json={"client_message_id": "retry-client-2"},
+        )
+        regen_resp = await client.post(
+            f"/api/v1/conversations/{conv_regen.id}/runs/{success_run.id}/regenerate",
+            headers=auth_headers,
+            json={"client_message_id": "regen-client-3"},
+        )
+
+        assert retry_resp.status_code == 200
+        retry_run = await db_session.scalar(select(ChatRun).where(ChatRun.id == UUID(retry_resp.json()["run_id"])))
+        assert retry_run is not None
+        assert retry_run.shell_state_json == {"client_message_id": "retry-client-2"}
+
+        assert regen_resp.status_code == 200
+        regen_run = await db_session.scalar(select(ChatRun).where(ChatRun.id == UUID(regen_resp.json()["run_id"])))
+        assert regen_run is not None
+        assert regen_run.shell_state_json == {"client_message_id": "regen-client-3"}
+
+    @pytest.mark.asyncio
+    async def test_stream_passes_client_message_id_to_runner(
+        self,
+        client: AsyncClient,
+        auth_headers: dict[str, str],
+        db_session: AsyncSession,
+        test_user: User,
+        monkeypatch,
+    ) -> None:
+        conv = await _create_conversation(db_session, test_user)
+        run = ChatRun(
+            id=uuid4(),
+            conversation_id=conv.id,
+            user_id=test_user.id,
+            query="hello",
+            status=RunStatus.PENDING,
+            shell_state_json={"client_message_id": "stream-client-1"},
+        )
+        db_session.add(run)
+        await db_session.flush()
+        await db_session.commit()
+        seen: dict[str, str | None] = {}
+
+        class _RecordingRunner(_FakeNativeRunner):
+            async def run(self, **kwargs):
+                seen["client_message_id"] = kwargs.get("client_message_id")
+                async for event in super().run(**kwargs):
+                    yield event
+
+        monkeypatch.setattr("app.api.chat_runs.create_native_agent", lambda _session: _RecordingRunner())
+        monkeypatch.setattr("app.api.chat_runs.get_async_session_factory", lambda: (lambda: db_session))
+
+        response = await client.get(
+            f"/api/v1/conversations/{conv.id}/runs/{run.id}/stream",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert seen["client_message_id"] == "stream-client-1"
 
     @pytest.mark.asyncio
     async def test_retry_conflicts_when_another_active_run_owns_conversation(

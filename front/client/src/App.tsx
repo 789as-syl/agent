@@ -7,6 +7,7 @@ const MainLayout = lazy(() => import('./components/MainLayout'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const RegisterPage = lazy(() => import('./pages/RegisterPage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
+const LearningCenterPage = lazy(() => import('./pages/LearningCenterPage'))
 
 const RouteFallback = () => <div className="min-h-screen bg-slate-50" />
 
@@ -34,6 +35,7 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<MainLayout />}>
                 <Route path="/" element={<ChatPage />} />
+                <Route path="/learning" element={<LearningCenterPage />} />
                 <Route path="/:id" element={<ChatPage />} />
               </Route>
             </Route>

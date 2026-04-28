@@ -1,0 +1,176 @@
+services:
+  postgres:
+    image: paradedb/paradedb:latest
+    container_name: kb-postgres-full
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: knowledge_base
+    volumes:
+      - postgres_full_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kb-network
+
+  redis:
+    image: redis:latest
+    container_name: kb-redis-full
+    volumes:
+      - redis_full_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - kb-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: kb-minio-full
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9001:9001"
+    volumes:
+      - minio_full_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - kb-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: kb-api-full
+    env_file:
+      - .env
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/knowledge_base
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      MINIO_ENDPOINT: ${FULL_STACK_STORAGE_DOMAIN:-storage.localtest.me}:8080
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: http://${FULL_STACK_APP_DOMAIN:-app.localtest.me}:8080,http://${FULL_STACK_ADMIN_DOMAIN:-admin.localtest.me}:8080
+      DATABASE_REQUIRE_HEAD_REVISION: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/ready >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - kb-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: kb-worker-full
+    command: ["/usr/local/bin/start-worker"]
+    env_file:
+      - .env
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/knowledge_base
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      MINIO_ENDPOINT: ${FULL_STACK_STORAGE_DOMAIN:-storage.localtest.me}:8080
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: http://${FULL_STACK_APP_DOMAIN:-app.localtest.me}:8080,http://${FULL_STACK_ADMIN_DOMAIN:-admin.localtest.me}:8080
+      DATABASE_REQUIRE_HEAD_REVISION: "true"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - kb-network
+
+  client-web:
+    build:
+      context: .
+      dockerfile: front/client/Dockerfile
+    container_name: kb-client-web-full
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - kb-network
+
+  admin-web:
+    build:
+      context: .
+      dockerfile: front/admin/Dockerfile
+    container_name: kb-admin-web-full
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - kb-network
+
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: kb-gateway-full
+    ports:
+      - "8080:80"
+    environment:
+      APP_DOMAIN: ${FULL_STACK_APP_DOMAIN:-app.localtest.me}
+      ADMIN_DOMAIN: ${FULL_STACK_ADMIN_DOMAIN:-admin.localtest.me}
+      STORAGE_DOMAIN: ${FULL_STACK_STORAGE_DOMAIN:-storage.localtest.me}
+    volumes:
+      - ./deploy/nginx/gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      client-web:
+        condition: service_started
+      admin-web:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      kb-network:
+        aliases:
+          - ${FULL_STACK_APP_DOMAIN:-app.localtest.me}
+          - ${FULL_STACK_ADMIN_DOMAIN:-admin.localtest.me}
+          - ${FULL_STACK_STORAGE_DOMAIN:-storage.localtest.me}
+
+volumes:
+  postgres_full_data:
+  redis_full_data:
+  minio_full_data:
+
+networks:
+  kb-network:
+    driver: bridge
+

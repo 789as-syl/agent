@@ -12,6 +12,8 @@
     "types": ["node"]
   },
   "include": [
+    "src/pages/chat/chat-run-machine.ts",
+    "src/pages/chat/chat-run-machine.trace.test.ts",
     "src/pages/chat/streaming-session.ts",
     "src/pages/chat/message-utils.ts",
     "src/pages/chat/streaming-session.trace.test.ts",

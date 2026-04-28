@@ -1,26 +1,29 @@
 # Knowledge Base Agent
 
-知识库 RAG / Agent 系统，包含 FastAPI 后端、用户端 Vite React 应用、管理员端 Vite React 应用，以及 PostgreSQL/pgvector、Redis、MinIO、Celery、LangGraph checkpoint 等本地开发依赖。
+知识库 RAG / Agent 系统，包含 FastAPI 后端、用户端 Vite React 应用、管理员端 Vite React 应用，以及 PostgreSQL/pgvector、Redis、MinIO、Celery、LangGraph checkpoint 等本地与部署样例依赖。
 
-> 当前 README 反映 2026-04-26 的实际代码状态。旧的“仅 Foundation 后端阶段”描述已不再准确；SPEC 状态以 `docs/spec-status-matrix-2026-04-26.md` 为准。
+> 当前 README 反映 2026-04-27 全平台修复后的实际代码状态。完整边界与验收标准以 `.omx/plans/prd-full-platform-remediation-20260426.md` 和 `.omx/plans/test-spec-full-platform-remediation-20260426.md` 为准。
 
 ## 当前能力概览
 
 - 用户认证与会话：注册、登录、刷新、登出、当前用户查询。
 - 用户端：会话列表、消息历史、Agent Chat 流式输出、SSE 断线回放、HITL resume、retry/regenerate 入口。
-- 管理端：知识点/文档入库、题库/题库向量化、用户管理、用户会话只读审阅、Dashboard 与知识图谱数据接口。
-- RAG/文档：文档解析、预览、切片、向量化、检索、重排/融合相关服务；Docling/PDF 能力依赖运行时安装状态。
-- Agent/Trace：LangGraph 原生运行时、Postgres checkpoint、`run_events` 持久回放、`messages` 用户可见历史写回。
+- 用户学习闭环：练习会话、错题本、掌握度、复习卡片、学习路径 MVP、回答反馈。
+- 管理端：知识点/文档入库、题库/题库向量化、用户管理、用户会话只读审阅、Dashboard、知识图谱、运维与质量中心、Trace Lab、RAG Eval Lab、审计日志。
+- RAG/文档：文档解析、预览、切片、向量化、检索、重排/融合、题库证据接入、质量雷达与任务控制台。
+- Agent/Trace：LangGraph 原生运行时、Postgres checkpoint、`run_events` 持久回放、`messages` 用户可见历史写回、脱敏 trace 投影、证据卡片、管理员重放视图。
+- 部署样例：本地 full-stack compose、production-shaped compose sample、前后端 Dockerfile、Nginx gateway 模板。
 
 ## 关键文档入口
 
 - 当前架构：`docs/current-architecture-2026-04-26.md`
 - API 路由：`docs/API_DOCUMENTATION.md`
 - Agent/RAG/Trace 契约：`docs/agent-rag-trace-contract-2026-04-26.md`
+- 部署说明：`docs/deployment-stack-2026-04-27.md`
 - SPEC 状态矩阵：`docs/spec-status-matrix-2026-04-26.md`
 - 验证矩阵：`docs/validation-matrix-2026-04-26.md`
-- 本轮修复 PRD：`.omx/plans/prd-global-architecture-repair-20260426.md`
-- 本轮测试规格：`.omx/plans/test-spec-global-architecture-repair-20260426.md`
+- 本轮修复 PRD：`.omx/plans/prd-full-platform-remediation-20260426.md`
+- 本轮测试规格：`.omx/plans/test-spec-full-platform-remediation-20260426.md`
 
 ## 技术栈
 
@@ -108,19 +111,45 @@ npm install
 npm run dev
 ```
 
-## P0 质量门槛
+## Full-stack compose（新增）
 
-本仓库的 P0 gate 不是“关闭检查换取通过”，而是让检查重新产生有用信号。
+### 本地全栈
+
+```powershell
+docker compose -f docker-compose.full.yml up -d --build
+docker compose -f docker-compose.full.yml ps
+```
+
+访问入口：
+
+- 用户端：`http://app.localtest.me:8080`
+- 管理端：`http://admin.localtest.me:8080`
+- 存储域名：`http://storage.localtest.me:8080`
+- MinIO Console：`http://localhost:9001`
+
+### Production-shaped sample
+
+```powershell
+docker compose --env-file deploy/.env.production.sample -f docker-compose.prod.sample.yml config
+```
+
+该文件是部署脚手架，不代表已完成真实生产验证。详细边界见 `docs/deployment-stack-2026-04-27.md`。
+
+## 验证门槛
+
+本仓库当前的最低验收不是“页面能打开”，而是后端、前端、迁移、Trace 和部署样例都有可复现验证。
 
 ```powershell
 python -m ruff check app scripts
 python -m mypy app
-pytest app/tests/test_api_chat_runs.py app/tests/test_unit_trace_consistency.py app/tests/test_unit_agent_trace_contract.py -q
-cd front/client; npm run typecheck; npm run test:trace
-cd front/admin; npm run typecheck
+$env:TEST_DATABASE_URL='postgresql+asyncpg://postgres:postgres@localhost:5432/knowledge_base_test'
+.\.venv\Scripts\python.exe -m pytest app/tests -q
+cd front/client; npm run typecheck; npm run test:trace; npm run build
+cd front/admin; npm run typecheck; npm run build
+docker compose ps
 ```
 
-完整矩阵和环境依赖见：`docs/validation-matrix-2026-04-26.md`。
+完整矩阵和环境依赖见：`docs/validation-matrix-2026-04-26.md` 与 `.omx/plans/test-spec-full-platform-remediation-20260426.md`。
 
 ### Ruff 策略
 
@@ -164,18 +193,15 @@ docs/              current docs, reports, review artifacts
 specs/             original staged specs
 ```
 
-## 明确非目标
+## 明确边界
 
-本轮 P0+B1 修复不包含：
+当前仍然明确排除：
 
-- full learning loop、错题本、掌握度模型、review cards、完整学习路径；
-- 多租户、组织空间、full RBAC；
-- 生产部署栈、Nginx、secret manager、完整运维平台；
-- production-grade `web_search` 替换；
-- 大范围 UI 视觉重设计；
-- `native_agent_runner.py`、`document_processing.py`、`ChatPage.tsx` 或 admin 大页面的未验证大重写；
-- 未批准的新依赖/新基础设施；
-- 未批准的破坏性数据变更。
+- 完整 RBAC / 多租户 / 组织空间模型；
+- 原始 chain-of-thought、provider payload、tool protocol 在 API/UI/Trace 中透出；
+- 未经真实基础设施验证就宣称“生产已验证”；
+- production-grade `web_search` provider overhaul；
+- 大范围纯视觉重设计。
 
 ## License
 

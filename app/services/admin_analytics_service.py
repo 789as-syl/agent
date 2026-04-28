@@ -6,7 +6,11 @@ import json
 
 from app.core.config import settings
 from app.core.redis import redis_client
-from app.repositories.admin_analytics_repo import AdminAnalyticsRepository, range_to_since
+from app.repositories.admin_analytics_repo import (
+    AdminAnalyticsRepository,
+    normalize_dashboard_breakdown_items,
+    range_to_since,
+)
 from app.schemas.admin_analytics import (
     AdminDashboardResponse,
     AdminRange,
@@ -29,13 +33,19 @@ class AdminAnalyticsService:
         cache_key = f"admin:dashboard:{range_value}"
         cached = await self._get_cache(cache_key)
         if cached:
+            cached_breakdown = cached.get("result_breakdown")
+            if isinstance(cached_breakdown, list) and all(isinstance(item, dict) for item in cached_breakdown):
+                cached = {
+                    **cached,
+                    "result_breakdown": normalize_dashboard_breakdown_items(cached_breakdown),
+                }
             return AdminDashboardResponse.model_validate(cached)
 
         since = range_to_since(range_value)
 
         metrics_raw = await self.repo.get_dashboard_metrics(since)
         trends_raw = await self.repo.get_dashboard_trends(since, range_value)
-        breakdown_raw = await self.repo.get_dashboard_breakdown(since)
+        breakdown_raw = normalize_dashboard_breakdown_items(await self.repo.get_dashboard_breakdown(since))
         heat_raw = await self.repo.get_knowledge_heat(since, limit=10)
 
         payload = AdminDashboardResponse(

@@ -7,9 +7,10 @@ import type {
   ResumeChatRunRequest,
   ChatRunStatusResponse,
   CreateChatRunRequest,
+  ChatRunRepeatRequest,
 } from '../types'
 
-export const chatRunsApi = createChatRunsApi<
+const baseChatRunsApi = createChatRunsApi<
   CreateChatRunRequest,
   ChatRun,
   ChatRunStatusResponse,
@@ -17,3 +18,11 @@ export const chatRunsApi = createChatRunsApi<
   ResumeChatRunRequest,
   ChatRunEventsResponse
 >(apiClient)
+
+export const chatRunsApi = {
+  ...baseChatRunsApi,
+  retry: (conversationId: string, runId: string, data?: ChatRunRepeatRequest) =>
+    apiClient.post<ChatRunMutationResponse>(`/conversations/${conversationId}/runs/${runId}/retry`, data),
+  regenerate: (conversationId: string, runId: string, data?: ChatRunRepeatRequest) =>
+    apiClient.post<ChatRunMutationResponse>(`/conversations/${conversationId}/runs/${runId}/regenerate`, data),
+}

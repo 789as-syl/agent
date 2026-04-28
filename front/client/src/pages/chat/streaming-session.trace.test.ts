@@ -7,6 +7,7 @@ import {
   applyStreamingEvent,
   buildExecutionTraceEntry,
   createStreamingSessionState,
+  restoreStreamingSessionFromRun,
   resolveExecutionTraceDetail,
 } from './streaming-session'
 import { buildDisplayMessages, resolveRenderableContent, sanitizeVisibleText } from './message-utils'
@@ -386,4 +387,170 @@ test('buildDisplayMessages hides pending user after persisted same-content user 
 
   assert.equal(display.filter((message) => message.role === 'user').length, 1)
   assert.equal(display.some((message) => message.id === 'pending-user-1'), false)
+})
+
+test('buildDisplayMessages hides pending user by stable client_message_id without content matching', () => {
+  const state = createStreamingSessionState({
+    id: 'pending-user:client-msg-1',
+    client_message_id: 'client-msg-1',
+    content: '新的问题内容',
+    created_at: '2026-04-22T00:00:00Z',
+  })
+  const messages: Message[] = [
+    {
+      id: 'persisted-user-1',
+      conversation_id: 'conv-1',
+      client_message_id: 'client-msg-1',
+      role: 'user',
+      content: '服务端规范化后的问题内容',
+      created_at: '2026-04-22T00:00:01Z',
+    },
+  ]
+
+  const display = buildDisplayMessages(messages, {
+    isRunning: false,
+    streamingContent: '',
+    executionTrace: [],
+    conversationId: 'conv-1',
+    activeClientMessageId: 'client-msg-1',
+    pendingUserMessage: state.pendingUserMessage,
+    session: state,
+  })
+
+  assert.equal(display.filter((message) => message.role === 'user').length, 1)
+  assert.equal(display[0]?.id, 'persisted-user-1')
+  assert.equal(display.some((message) => message.id === 'pending-user:client-msg-1'), false)
+})
+
+test('buildDisplayMessages hides streaming assistant by stable association and active run handoff', () => {
+  const state = createStreamingSessionState({
+    id: 'pending-user:client-msg-2',
+    client_message_id: 'client-msg-2',
+    content: '原始问题',
+    created_at: '2026-04-22T00:00:00Z',
+  })
+  const messages: Message[] = [
+    {
+      id: 'persisted-user-2',
+      conversation_id: 'conv-1',
+      client_message_id: 'client-msg-2',
+      role: 'user',
+      content: '原始问题',
+      created_at: '2026-04-22T00:00:01Z',
+    },
+    {
+      id: 'assistant-2',
+      conversation_id: 'conv-1',
+      run_id: 'run-2',
+      client_message_id: 'client-msg-2',
+      role: 'assistant',
+      content: '最终持久化回答',
+      created_at: '2026-04-22T00:00:02Z',
+    },
+  ]
+
+  const display = buildDisplayMessages(messages, {
+    isRunning: false,
+    streamingContent: '',
+    executionTrace: [],
+    conversationId: 'conv-1',
+    activeRunId: 'run-2',
+    activeClientMessageId: 'client-msg-2',
+    pendingUserMessage: state.pendingUserMessage,
+    session: {
+      ...state,
+      assistantContent: '临时流式回答',
+      finalAnswer: '临时流式回答',
+    },
+  })
+
+  assert.equal(display.some((message) => message.id === 'streaming-assistant'), false)
+  assert.equal(display[1]?.id, 'assistant-2')
+})
+
+
+test('buildExecutionTraceEntry preserves answer_basis and structured evidence fields', () => {
+  const event = executionTraceEvent({
+    kind: 'tool_result',
+    title: '知识库命中 1 个证据块',
+    detail: '命中证据：商业模式画布',
+    decision_code: 'retrieval_hit',
+    status: 'completed',
+    answer_basis: 'knowledge_backed',
+    evidence: [
+      {
+        source: 'knowledge_retrieval',
+        label: '商业模式画布',
+        title: '商业模式画布',
+        snippet: '用于描述价值主张、客户细分和收入来源的结构化工具。',
+        source_type: 'courseware',
+        locator: 'page 12',
+        evidence_type: 'retrieved_chunk',
+      },
+    ],
+  })
+
+  const entry = buildExecutionTraceEntry(event)
+
+  assert.equal(entry.answer_basis, 'knowledge_backed')
+  assert.equal(entry.evidence?.[0]?.title, '商业模式画布')
+  assert.equal(entry.evidence?.[0]?.snippet, '用于描述价值主张、客户细分和收入来源的结构化工具。')
+  assert.equal(entry.evidence?.[0]?.source_type, 'courseware')
+  assert.equal(entry.evidence?.[0]?.locator, 'page 12')
+  assert.equal(entry.evidence?.[0]?.evidence_type, 'retrieved_chunk')
+})
+
+test('applyStreamingEvent exposes canonical answer_basis instead of raw retrieval failure label', () => {
+  const state = applyStreamingEvent(createStreamingSessionState(), executionTraceEvent({
+    kind: 'tool_result',
+    title: '知识库检索失败',
+    detail: '知识库检索暂不可用，已切换为直接回答',
+    decision_code: 'retrieval_failed',
+    status: 'completed',
+    answer_basis: 'retrieval_unavailable',
+    retrieval_failed: true,
+  }))
+
+  const entry = state.executionTrace[0]
+  assert.equal(entry?.answer_basis, 'retrieval_unavailable')
+  assert.equal(entry?.decision_code, 'retrieval_failed')
+  assert.equal(entry ? 'retrieval_failed' in entry : false, false)
+})
+
+test('restoreStreamingSessionFromRun replays answer_basis and evidence the same as live SSE', () => {
+  const event = executionTraceEvent({
+    kind: 'tool_result',
+    title: '知识库命中 1 个证据块',
+    decision_code: 'retrieval_hit',
+    status: 'completed',
+    answer_basis: 'knowledge_backed',
+    semantic_key: 'trace:knowledge-backed',
+    evidence: [
+      {
+        source: 'knowledge_retrieval',
+        label: '商业模式画布',
+        title: '商业模式画布',
+        snippet: '紧凑证据摘要',
+        source_type: 'courseware',
+        locator: 'page 12',
+        evidence_type: 'retrieved_chunk',
+      },
+    ],
+  })
+
+  const live = applyStreamingEvent(createStreamingSessionState(), event)
+  const hydrated = restoreStreamingSessionFromRun(null, undefined, createStreamingSessionState(), [event])
+
+  assert.deepEqual(hydrated.executionTrace, live.executionTrace)
+})
+
+test('legacy direct answer trace falls back to direct answer_basis for protocol compatibility', () => {
+  const entry = buildExecutionTraceEntry(executionTraceEvent({
+    kind: 'decision',
+    title: '直接回答',
+    decision_code: 'direct_answer',
+    status: 'completed',
+  }))
+
+  assert.equal(entry.answer_basis, 'direct')
 })

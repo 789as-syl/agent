@@ -17,3 +17,10 @@ export interface IngestionJobRetryResponse {
   status: string
   message: string
 }
+
+export interface IngestionJobListResponse {
+  items: IngestionJobResponse[]
+  total: number
+  page: number
+  page_size: number
+}

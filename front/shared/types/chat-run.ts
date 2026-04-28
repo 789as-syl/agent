@@ -1,9 +1,10 @@
-import type { MessageContentBlock, TraceEvidenceItem, TraceRange } from './message'
+import type { AnswerBasis, MessageContentBlock, TraceEvidenceItem, TraceRange } from './message'
 
 export type HitlDecisionType = 'respond' | 'approve' | 'edit' | 'reject'
 
 export interface ExecutionTraceData {
   kind: string
+  semantic_key?: string
   title?: string
   detail?: string
   decision_code?: string
@@ -13,6 +14,7 @@ export interface ExecutionTraceData {
   result_summary?: string
   result_count?: number
   retrieval_failed?: boolean
+  answer_basis?: AnswerBasis
   evidence?: TraceEvidenceItem[]
   reasoning_anchor?: TraceRange
   metadata?: Record<string, unknown>
@@ -129,6 +131,7 @@ export type SSEEvent =
 
 export interface CreateChatRunRequest {
   query: string
+  client_message_id?: string
 }
 
 export interface ChatRun {
@@ -139,7 +142,12 @@ export interface ChatRun {
 export interface ChatRunMutationResponse {
   status: string
   run_id: string
+  client_message_id?: string | null
   message?: string | null
+}
+
+export interface ChatRunRepeatRequest {
+  client_message_id?: string
 }
 
 export interface ResumeChatRunDecision {
@@ -160,10 +168,12 @@ export interface HitlRuntimeState {
 
 export interface ChatRunRuntimeState {
   hitl?: HitlRuntimeState | null
+  client_message_id?: string | null
 }
 
 export interface ChatRunStatusResponse extends ChatRun {
   query: string
+  client_message_id?: string | null
   error_message?: string | null
   runtime_state: ChatRunRuntimeState
 }

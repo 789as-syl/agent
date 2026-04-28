@@ -10,8 +10,29 @@ import type {
   TraceRange,
 } from '../../types'
 
+export type AnswerBasis =
+  | 'knowledge_backed'
+  | 'direct'
+  | 'retrieval_unavailable'
+  | 'evidence_insufficient'
+  | 'needs_clarification'
+
+type ProductTraceEvidenceItem = TraceEvidenceItem & {
+  title?: string
+  snippet?: string
+  source_type?: string
+  locator?: string
+  evidence_type?: string
+}
+
+type ProductExecutionTraceEntry = ExecutionTraceEntry & {
+  answer_basis?: AnswerBasis
+  evidence?: ProductTraceEvidenceItem[]
+}
+
 export interface PendingUserMessage {
   id: string
+  client_message_id?: string | null
   content: string
   created_at: string
 }
@@ -244,7 +265,8 @@ function upsertTraceEntry(state: StreamingSessionState, payload: ExecutionTraceE
 export function buildExecutionTraceEntry(event: Extract<SSEEvent, { event_type: 'execution_trace' }>): ExecutionTraceEntry {
   const traceData = event.trace_data || {}
 
-  return {
+  const answerBasis = resolveTraceAnswerBasis(traceData)
+  const entry: ProductExecutionTraceEntry = {
     id: event.event_id,
     semantic_key: normalizeSemanticKey((traceData as unknown as { semantic_key?: unknown }).semantic_key),
     kind: traceData.kind || 'execution',
@@ -258,6 +280,10 @@ export function buildExecutionTraceEntry(event: Extract<SSEEvent, { event_type: 
     result_summary: typeof traceData.result_summary === 'string' ? traceData.result_summary : undefined,
     metadata: traceData.metadata,
   }
+  if (answerBasis) {
+    entry.answer_basis = answerBasis
+  }
+  return entry
 }
 
 function normalizeAllowedActions(value: unknown): HitlDecisionType[] {
@@ -279,6 +305,57 @@ function normalizeSemanticKey(value: unknown): string | undefined {
   }
   const normalized = value.trim()
   return normalized ? normalized : undefined
+}
+
+function normalizeAnswerBasis(value: unknown): AnswerBasis | undefined {
+  if (
+    value === 'knowledge_backed'
+    || value === 'direct'
+    || value === 'retrieval_unavailable'
+    || value === 'evidence_insufficient'
+    || value === 'needs_clarification'
+  ) {
+    return value
+  }
+  return undefined
+}
+
+function resolveTraceAnswerBasis(traceData: {
+  answer_basis?: unknown
+  decision_code?: unknown
+  kind?: unknown
+  retrieval_failed?: unknown
+  evidence?: unknown
+  title?: unknown
+  detail?: unknown
+}): AnswerBasis | undefined {
+  const explicit = normalizeAnswerBasis(traceData.answer_basis)
+  if (explicit) {
+    return explicit
+  }
+  if (traceData.decision_code === 'direct_answer') {
+    return 'direct'
+  }
+  if (traceData.decision_code === 'clarify_missing_context' || traceData.kind === 'clarification') {
+    return 'needs_clarification'
+  }
+  if (traceData.retrieval_failed === true || traceData.decision_code === 'retrieval_failed') {
+    return 'retrieval_unavailable'
+  }
+  if (traceData.decision_code === 'retrieval_hit') {
+    return 'knowledge_backed'
+  }
+  if (traceData.decision_code === 'retrieval_insufficient') {
+    return 'evidence_insufficient'
+  }
+  const visibleText = `${typeof traceData.title === 'string' ? traceData.title : ''} ${typeof traceData.detail === 'string' ? traceData.detail : ''}`
+  if (/证据不足|insufficient/i.test(visibleText)) {
+    return 'evidence_insufficient'
+  }
+  if (/知识库证据|已检索到 .*知识库证据/i.test(visibleText)) {
+    return 'knowledge_backed'
+  }
+  return undefined
 }
 
 function normalizeToolInput(value: unknown): string | undefined {
@@ -338,7 +415,7 @@ export function resolveExecutionTraceDetail(traceData: {
   return undefined
 }
 
-function normalizeTraceEvidenceItems(value: unknown): TraceEvidenceItem[] | undefined {
+function normalizeTraceEvidenceItems(value: unknown): ProductTraceEvidenceItem[] | undefined {
   if (!Array.isArray(value)) {
     return undefined
   }
@@ -346,9 +423,29 @@ function normalizeTraceEvidenceItems(value: unknown): TraceEvidenceItem[] | unde
   const evidence = value
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
     .map((item) => {
-      const source = typeof item.source === 'string' && item.source.trim() ? item.source : 'unknown'
-      const label = typeof item.label === 'string' && item.label.trim() ? item.label : '证据'
-      const payload: TraceEvidenceItem = { source, label }
+      const title = normalizeShortText(item.title)
+      const snippet = normalizeShortText(item.snippet)
+      const sourceType = normalizeShortText(item.source_type)
+      const locator = normalizeShortText(item.locator)
+      const evidenceType = normalizeShortText(item.evidence_type)
+      const source = normalizeShortText(item.source) || sourceType || 'unknown'
+      const label = normalizeShortText(item.label) || title || '证据'
+      const payload: ProductTraceEvidenceItem = { source, label }
+      if (title) {
+        payload.title = title
+      }
+      if (snippet) {
+        payload.snippet = snippet
+      }
+      if (sourceType) {
+        payload.source_type = sourceType
+      }
+      if (locator) {
+        payload.locator = locator
+      }
+      if (evidenceType) {
+        payload.evidence_type = evidenceType
+      }
       if (typeof item.detail === 'string' && item.detail.trim()) {
         payload.detail = item.detail
       }
@@ -363,6 +460,14 @@ function normalizeTraceEvidenceItems(value: unknown): TraceEvidenceItem[] | unde
     })
 
   return evidence.length > 0 ? evidence : undefined
+}
+
+function normalizeShortText(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const normalized = value.trim()
+  return normalized ? normalized : undefined
 }
 
 function normalizeTraceRange(value: unknown): TraceRange | undefined {

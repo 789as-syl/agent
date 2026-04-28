@@ -131,14 +131,19 @@ class ConversationMemoryService:
         execution_trace: list[dict[str, Any]] | None,
         reasoning_redacted: bool,
         run_id: uuid.UUID,
+        client_message_id: str | None = None,
     ) -> None:
         filtered_query = filter_persisted_user_query(query)
         filtered_answer = filter_persisted_assistant_answer(final_answer)
+        user_metadata = self._build_user_message_metadata(
+            run_id=run_id,
+            client_message_id=client_message_id,
+        )
         user_message = await self.message_repo.create(
             conversation_id=conversation_id,
             role="user",
             content=filtered_query,
-            metadata={"run_id": str(run_id)},
+            metadata=user_metadata,
         )
         await self.message_repo.create(
             conversation_id=conversation_id,
@@ -150,8 +155,20 @@ class ConversationMemoryService:
                 user_message_id=user_message.id,
                 execution_trace=execution_trace,
                 reasoning_redacted=reasoning_redacted,
+                client_message_id=client_message_id,
             ),
         )
+
+    def _build_user_message_metadata(
+        self,
+        *,
+        run_id: uuid.UUID,
+        client_message_id: str | None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"run_id": str(run_id)}
+        if client_message_id:
+            payload["client_message_id"] = client_message_id
+        return payload
 
     def _build_assistant_message_metadata(
         self,
@@ -160,12 +177,15 @@ class ConversationMemoryService:
         user_message_id: uuid.UUID,
         execution_trace: list[dict[str, Any]] | None,
         reasoning_redacted: bool,
+        client_message_id: str | None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "run_id": str(run_id),
             "reply_to_message_id": str(user_message_id),
             "execution_trace": execution_trace or [],
         }
+        if client_message_id:
+            payload["client_message_id"] = client_message_id
         if reasoning_redacted:
             # Raw model reasoning is intentionally not persisted as product/API
             # state. Durable transparency is carried by execution_trace; this

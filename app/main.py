@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin_analytics import admin_analytics_router
 from app.api.admin_audit import admin_audit_router
+from app.api.admin_feedback import admin_feedback_router
 from app.api.admin_operations import admin_operations_router
 from app.api.admin_trace_lab import admin_trace_lab_router
 from app.api.admin_users import admin_user_router
@@ -20,6 +21,7 @@ from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
 from app.api.ingestion import admin_ingestion_router
 from app.api.learning import learning_router
+from app.api.message_feedback import message_feedback_router
 from app.api.questions import admin_question_router
 from app.api.rag_eval_lab import rag_eval_lab_router
 from app.core.config import (
@@ -154,6 +156,7 @@ def create_app() -> FastAPI:
     app.include_router(conversations_router, prefix="/api/v1")
     app.include_router(chat_runs_router, prefix="/api/v1")
     app.include_router(learning_router)
+    app.include_router(message_feedback_router)
     app.include_router(admin_ingestion_router)
     app.include_router(admin_question_router)
     app.include_router(admin_analytics_router)
@@ -162,6 +165,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_operations_router)
     app.include_router(rag_eval_lab_router)
     app.include_router(admin_audit_router)
+    app.include_router(admin_feedback_router)
 
     return app
 

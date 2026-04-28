@@ -25,15 +25,6 @@ interface ConversationState {
   updateConversation: (id: string, title: string) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   fetchMessages: (conversationId: string) => Promise<void>
-  addMessage: (message: Message) => void
-}
-
-interface ChatState {
-  currentRunId: string | null
-  isRunning: boolean
-  setCurrentRunId: (id: string | null) => void
-  setIsRunning: (running: boolean) => void
-  clearChat: () => void
 }
 
 interface GlobalState {
@@ -139,19 +130,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
         if (state.activeMessagesConversationId !== conversationId) {
           return { loading: false }
         }
-        const pendingMessages = state.messages.filter((message) => (
-          message.conversation_id === conversationId
-          && message.id.startsWith('pending-user-')
-          && !response.items.some((item) => (
-            item.id === message.id
-            || (
-              item.role === message.role
-              && item.role === 'user'
-              && item.content.trim() === message.content.trim()
-            )
-          ))
-        ))
-        return { messages: [...response.items, ...pendingMessages], loading: false }
+        return { messages: response.items, loading: false }
       })
     } catch (error) {
       set((state) => {
@@ -165,34 +144,6 @@ export const useConversationStore = create<ConversationState>((set) => ({
       })
       throw error
     }
-  },
-  
-  addMessage: (message: Message) => {
-    set((state) => {
-      const messages = state.activeMessagesConversationId === message.conversation_id
-        ? state.messages.filter((item) => item.conversation_id === message.conversation_id)
-        : []
-      const existingIndex = messages.findIndex((item) => item.id === message.id)
-      const nextMessages = existingIndex >= 0
-        ? messages.map((item, index) => (index === existingIndex ? message : item))
-        : [...messages, message]
-      return {
-        activeMessagesConversationId: message.conversation_id,
-        messages: nextMessages,
-      }
-    })
-  },
-}))
-
-export const useChatStore = create<ChatState>((set) => ({
-  currentRunId: null,
-  isRunning: false,
-  
-  setCurrentRunId: (id) => set({ currentRunId: id }),
-  setIsRunning: (running) => set({ isRunning: running }),
-  
-  clearChat: () => {
-    set({ currentRunId: null, isRunning: false })
   },
 }))
 

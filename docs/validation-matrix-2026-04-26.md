@@ -1,6 +1,6 @@
-# Validation Matrix - 2026-04-26
+# Validation Matrix - 2026-04-27
 
-This matrix is the P0 hard gate for the first global architecture repair slice. It intentionally separates hard gates, scoped gates, and environment-dependent gates so failures remain actionable.
+This matrix is the current hard gate for the full-platform remediation slice. It intentionally separates hard gates, scoped gates, and environment-dependent gates so failures remain actionable.
 
 ## Static checks
 
@@ -34,11 +34,13 @@ This matrix is the P0 hard gate for the first global architecture repair slice. 
 
 | Lane | Command | Required when | Expected result | Notes |
 |---|---|---|---|---|
-| Local services | `docker compose ps` | Running API/integration tests locally | DB/Redis/MinIO healthy | No production stack implied. |
+| Local services | `docker compose ps` | Running API/integration tests locally | DB/Redis/MinIO healthy | Existing infra compose remains the fastest dependency bootstrap. |
 | Migrations | `alembic upgrade head` | DB schema changed or fresh environment | Pass | No destructive migration without explicit approval. |
 | Test DB migration | `alembic -c alembic.test.ini upgrade head` or documented equivalent | Running DB-backed pytest | Pass | Use dedicated test DB. |
 | Health/readiness | `curl http://localhost:8000/health`, `curl http://localhost:8000/ready` | Backend server started | Health ok; readiness reports dependency status | Parser readiness may be degraded if Docling/PDF deps missing. |
-| RAG/parser golden checks | Existing parser/retrieval unit tests or future golden set | RAG/document slice selected | Pass | Deferred in first P0+B1 slice unless touched. |
+| Full-stack compose config | `docker compose -f docker-compose.full.yml config` | Deployment artifacts changed | Pass | Verifies local full-stack compose syntax. |
+| Production sample compose config | `docker compose --env-file deploy/.env.production.sample -f docker-compose.prod.sample.yml config` | Deployment artifacts changed | Pass | Validates sample deployment YAML and placeholder wiring; not a production rollout proof. |
+| RAG/parser golden checks | Existing parser/retrieval unit tests or future golden set | RAG/document slice selected | Pass | Representative retrieval/eval paths are now part of the broader V1 remediation. |
 
 ## Ruff policy
 
@@ -70,7 +72,7 @@ Configuration intent:
 - Third-party import gaps are centralized in `pyproject.toml` overrides (`docling`, `docling_core`, `dashscope`, `langchain`, `minio`, `pgvector`, `pypdf`, `psycopg`, `psycopg_pool`, `redis`, etc.).
 - If test typing is added later, it should be a separate command/gate rather than weakening the production gate.
 
-## Agent/Trace B1 pass criteria
+## Agent/Trace pass criteria
 
 B1 passes only if all of the following are true:
 
@@ -98,18 +100,15 @@ Executable B1 unit tests:
 pytest app/tests/test_unit_agent_trace_contract.py -q
 ```
 
-## Non-goal checks
+## Boundary checks
 
 Before final handoff, review changed files and dependency manifests:
 
-- No full learning loop.
 - No multi-tenant/org/full RBAC.
-- No production deployment stack.
+- No raw chain-of-thought / provider payload / tool protocol exposure.
 - No production-grade `web_search` overhaul.
 - No broad visual redesign.
-- No unverified large rewrites.
-- No new dependency or infrastructure without explicit approval.
-- No destructive migration/data operation without explicit approval.
+- No false claim that sample deployment equals real production verification.
 
 ## Final report evidence checklist
 

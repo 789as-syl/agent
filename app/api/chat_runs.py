@@ -35,6 +35,11 @@ router = APIRouter(prefix="/conversations", tags=["Chat Runs"])
 
 class ChatRunCreateRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
+    client_message_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ChatRunAssociationRequest(BaseModel):
+    client_message_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class ChatRunCreateResponse(BaseModel):
@@ -59,6 +64,7 @@ class ChatRunResumeRequest(BaseModel):
 
 class ChatRunRuntimeState(BaseModel):
     hitl: dict[str, Any] | None = None
+    client_message_id: str | None = None
 
 
 class ChatRunStatusResponse(BaseModel):
@@ -101,6 +107,7 @@ async def create_chat_run(
         conversation_id=conversation_id,
         user_id=current_user.id,
         query=request.query,
+        client_message_id=request.client_message_id,
     )
     return ChatRunCreateResponse(
         run_id=str(run.id),
@@ -247,11 +254,16 @@ async def retry_chat_run(
     run_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
+    request: ChatRunAssociationRequest | None = None,
 ) -> ChatRunMutationResponse:
     run_service = ChatRunService(session)
     try:
         await run_service.get_run_for_conversation(run_id, current_user.id, conversation_id)
-        run = await run_service.retry_run(run_id, current_user.id)
+        run = await run_service.retry_run(
+            run_id,
+            current_user.id,
+            client_message_id=request.client_message_id if request else None,
+        )
         return ChatRunMutationResponse(
             status=_status_value(run.status),
             run_id=str(run.id),
@@ -315,11 +327,16 @@ async def regenerate_chat_run(
     run_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
+    request: ChatRunAssociationRequest | None = None,
 ) -> ChatRunMutationResponse:
     run_service = ChatRunService(session)
     try:
         await run_service.get_run_for_conversation(run_id, current_user.id, conversation_id)
-        run = await run_service.regenerate_run(run_id, current_user.id)
+        run = await run_service.regenerate_run(
+            run_id,
+            current_user.id,
+            client_message_id=request.client_message_id if request else None,
+        )
         return ChatRunMutationResponse(
             status=_status_value(run.status),
             run_id=str(run.id),

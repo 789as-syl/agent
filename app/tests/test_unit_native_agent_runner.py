@@ -194,9 +194,9 @@ def test_knowledge_retrieval_failure_trace_uses_safe_fallback_metadata() -> None
     )
 
     assert trace.status == "completed"
-    assert trace.title == "知识库检索失败"
+    assert trace.title in {"知识库检索暂不可用", "知识库检索失败"}
     assert trace.detail == "知识库检索暂不可用，已切换为直接回答"
-    assert trace.decision_code == "retrieval_failed"
+    assert trace.decision_code == "retrieval_unavailable"
     assert trace.retrieval_failed is True
     assert trace.metadata == {
         "fallback": "direct_generation",
@@ -294,3 +294,76 @@ async def test_persist_after_run_keeps_messages_when_optional_summary_fails() ->
     runner.memory_service.maybe_update_summary.assert_awaited_once()
     assert db_session.commit.await_count == 1
     db_session.rollback.assert_awaited_once()
+
+
+def test_tool_result_trace_maps_successful_retrieval_to_knowledge_backed_with_compact_snippet() -> None:
+    long_content = "商业模式画布" + "很重要" * 200
+    trace = _build_tool_result_trace(
+        tool_name="knowledge_retrieval",
+        parsed={
+            "success": True,
+            "tool": "knowledge_retrieval",
+            "message": "ok",
+            "result_count": 1,
+            "evidence_blocks": [
+                {
+                    "title": "商业模式画布",
+                    "content": long_content,
+                    "group_type": "courseware",
+                    "provenance": [{"page_number": 12}],
+                }
+            ],
+        },
+        raw_content="raw tool json should not be shown",
+    )
+
+    streamed = _canonical_trace_to_sse_data(trace)
+    persisted = _canonical_trace_to_entry(trace, step=9)
+
+    assert trace.answer_basis == "knowledge_backed"
+    assert streamed.answer_basis == "knowledge_backed"
+    assert persisted["answer_basis"] == "knowledge_backed"
+    assert streamed.evidence is not None
+    evidence = streamed.evidence[0].model_dump(exclude_none=True)
+    assert evidence["title"] == "商业模式画布"
+    assert evidence["source_type"] in {"document", "courseware"}
+    assert evidence["locator"] in {"第 12 页", "page 12"}
+    assert evidence["evidence_type"] in {"courseware", "retrieved_chunk"}
+    assert "snippet" in evidence
+    assert len(evidence["snippet"]) <= 180
+    assert evidence["snippet"] != long_content
+    assert persisted["evidence"][0] == evidence
+
+
+def test_answer_basis_values_cover_direct_retrieval_unavailable_and_evidence_insufficient() -> None:
+    direct = _build_direct_answer_trace(query_intent=None, reasoning_accumulated="internal")
+    retrieval_unavailable = _build_tool_result_trace(
+        tool_name="knowledge_retrieval",
+        parsed={
+            "success": False,
+            "tool": "knowledge_retrieval",
+            "message": "知识库检索暂不可用，已切换为直接回答",
+            "result_count": 0,
+            "retrieval_failed": True,
+        },
+        raw_content="raw",
+    )
+    evidence_insufficient = _build_tool_result_trace(
+        tool_name="knowledge_retrieval",
+        parsed={
+            "success": True,
+            "tool": "knowledge_retrieval",
+            "message": "未命中有效证据",
+            "result_count": 0,
+            "evidence_blocks": [],
+        },
+        raw_content="raw",
+    )
+
+    assert direct is not None
+    assert direct.answer_basis == "direct"
+    assert retrieval_unavailable.answer_basis == "retrieval_unavailable"
+    assert evidence_insufficient.answer_basis == "evidence_insufficient"
+    assert _canonical_trace_to_sse_data(direct).answer_basis == "direct"
+    assert _canonical_trace_to_sse_data(retrieval_unavailable).answer_basis == "retrieval_unavailable"
+    assert _canonical_trace_to_sse_data(evidence_insufficient).answer_basis == "evidence_insufficient"

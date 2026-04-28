@@ -2,7 +2,9 @@
 import {
   LayoutDashboard,
   BookOpen,
+  ClipboardList,
   FileQuestion,
+  FlaskConical,
   Network,
   LogOut,
   Menu,
@@ -11,6 +13,8 @@ import {
   Shield,
   Users,
   MessagesSquare,
+  Telescope,
+  ScrollText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useState } from 'react'
@@ -21,6 +25,10 @@ const menuItems = [
   { path: '/knowledge', label: '知识库管理', icon: BookOpen },
   { path: '/questions', label: '题库管理', icon: FileQuestion },
   { path: '/graph', label: '知识图谱', icon: Network },
+  { path: '/operations', label: '运维与质量', icon: ClipboardList },
+  { path: '/trace-lab', label: 'Trace Lab', icon: Telescope },
+  { path: '/rag-eval', label: 'RAG Eval', icon: FlaskConical },
+  { path: '/audit-logs', label: '审计日志', icon: ScrollText },
   { path: '/users', label: '用户账号管理', icon: Users },
   { path: '/user-sessions', label: '用户会话审阅', icon: MessagesSquare },
 ]

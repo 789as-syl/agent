@@ -15,6 +15,7 @@ class MessageResponse(BaseModel):
     id: UUID
     conversation_id: UUID
     run_id: UUID | None = None
+    client_message_id: str | None = None
     role: str
     content: str
     content_blocks: list[dict[str, Any]] | None = None

@@ -12,6 +12,7 @@ import type {
   KnowledgePointResponse,
   KnowledgePointDocumentUrlResponse,
   IngestionJobResponse,
+  IngestionJobListResponse,
   IngestionJobRetryResponse,
 } from '../types'
 
@@ -35,6 +36,7 @@ const adminIngestionApi = createAdminIngestionApi<
   KnowledgePointDeleteResponse,
   KnowledgePointDocumentUrlResponse,
   IngestionJobResponse,
+  IngestionJobListResponse,
   IngestionJobRetryResponse
 >(apiClient)
 
@@ -50,6 +52,7 @@ export const {
   getKnowledgePointDocumentUrl,
   updateKnowledgePoint,
   reindexKnowledgePoint,
+  getIngestionJobs,
   getIngestionJob,
   retryIngestionJob,
 } = adminIngestionApi

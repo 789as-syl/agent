@@ -117,6 +117,13 @@ export interface VectorizationJobResponse {
   created_at: string
 }
 
+export interface VectorizationJobListResponse {
+  items: VectorizationJobResponse[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface VectorizationJobStatusResponse {
   job_id: string
   status: string
@@ -127,4 +134,11 @@ export interface VectorizationJobStatusResponse {
   error_message: string | null
   started_at: string | null
   finished_at: string | null
+}
+
+export interface VectorizationJobRetryResponse {
+  job_id: string
+  new_job_id: string
+  status: string
+  message: string
 }

@@ -13,6 +13,7 @@ from app.agents.runtime.native_checkpoint import (
 )
 from app.models.chat_run import ChatRun
 from app.models.enums import RunStatus
+from app.services.chat_run_service import get_run_client_message_id
 
 
 @dataclass(slots=True)
@@ -92,6 +93,7 @@ class RunResumeService:
     async def build_runtime_state_payload(self, run: ChatRun) -> dict[str, Any]:
         snapshot = await self.build_resume_snapshot(run)
         return {
+            "client_message_id": get_run_client_message_id(run),
             "hitl": {
                 "pending": snapshot.hitl_pending,
                 "kind": snapshot.hitl_kind,

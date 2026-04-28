@@ -1,5 +1,18 @@
 import type { ExecutionTraceEntry, Message, MessageContentBlock } from '../../types'
-import type { PendingUserMessage, StreamingSessionState } from './streaming-session'
+import type { AnswerBasis, PendingUserMessage, StreamingSessionState } from './streaming-session'
+
+export type ProductTraceEvidenceItem = NonNullable<ExecutionTraceEntry['evidence']>[number] & {
+  title?: string
+  snippet?: string
+  source_type?: string
+  locator?: string
+  evidence_type?: string
+}
+
+export type ProductExecutionTraceEntry = ExecutionTraceEntry & {
+  answer_basis?: AnswerBasis
+  evidence?: ProductTraceEvidenceItem[]
+}
 
 export function hydrateMessages(messages: Message[]): Message[] {
   const userIds = new Set(messages.filter((msg) => msg.role === 'user').map((msg) => msg.id))
@@ -25,20 +38,33 @@ export function buildDisplayMessages(
     streamingContent: string
     executionTrace: ExecutionTraceEntry[]
     conversationId: string
+    activeRunId?: string | null
+    activeClientMessageId?: string | null
     pendingUserMessage?: PendingUserMessage | null
     session?: StreamingSessionState | null
   }
 ): Message[] {
   const list = messages.filter((message) => message.conversation_id === params.conversationId)
   const pendingUserMessage = params.pendingUserMessage?.content ? params.pendingUserMessage : null
+  const stableClientMessageId =
+    params.activeClientMessageId
+    || pendingUserMessage?.client_message_id
+    || params.session?.pendingUserMessage?.client_message_id
+    || null
   const sessionAnswer = sanitizeVisibleText(
     params.session?.finalAnswer || params.session?.assistantContent || params.streamingContent
   )
   const hasPersistedAssistantForPendingUser = Boolean(
-    pendingUserMessage
-    && list.some((message) => (
+    list.some((message) => (
       message.role === 'assistant'
-      && message.reply_to_message_id === pendingUserMessage.id
+      && (
+        matchesClientMessageId(message.client_message_id, stableClientMessageId)
+        || (
+          message.reply_to_message_id === pendingUserMessage?.id
+          && (!params.activeRunId || message.run_id === params.activeRunId)
+        )
+      )
+      && (!params.activeRunId || !stableClientMessageId || message.run_id === params.activeRunId)
     ))
   )
   const shouldShowStreamingAssistant = Boolean(
@@ -52,8 +78,15 @@ export function buildDisplayMessages(
     && list.some((message) => (
       message.role === 'user'
       && (
+        matchesClientMessageId(message.client_message_id, stableClientMessageId)
+        || (
+          stableClientMessageId
+          && message.id === pendingUserMessage.id
+        )
+        || (
         message.id === pendingUserMessage.id
-        || message.content.trim() === pendingUserMessage.content.trim()
+          || message.content.trim() === pendingUserMessage.content.trim()
+        )
       )
     ))
   )
@@ -63,6 +96,7 @@ export function buildDisplayMessages(
       id: pendingUserMessage.id,
       conversation_id: params.conversationId,
       role: 'user',
+      client_message_id: pendingUserMessage.client_message_id,
       content: pendingUserMessage.content,
       created_at: pendingUserMessage.created_at,
     })
@@ -76,6 +110,8 @@ export function buildDisplayMessages(
     list.push({
       id: 'streaming-assistant',
       conversation_id: params.conversationId,
+      client_message_id: stableClientMessageId,
+      run_id: params.activeRunId,
       role: 'assistant',
       content: sessionAnswer,
       content_blocks: sanitizeContentBlocks(params.session?.contentBlocks ?? null),
@@ -204,6 +240,59 @@ export function sanitizeExecutionTrace(trace: ExecutionTraceEntry[] | null | und
     evidence: entry.evidence?.map((item) => ({
       ...item,
       detail: sanitizeVisibleText(item.detail),
+      title: sanitizeVisibleText((item as ProductTraceEvidenceItem).title),
+      snippet: sanitizeVisibleText((item as ProductTraceEvidenceItem).snippet),
+      source_type: sanitizeVisibleText((item as ProductTraceEvidenceItem).source_type),
+      locator: sanitizeVisibleText((item as ProductTraceEvidenceItem).locator),
+      evidence_type: sanitizeVisibleText((item as ProductTraceEvidenceItem).evidence_type),
     })),
   }))
+}
+
+function matchesClientMessageId(
+  messageClientMessageId: string | null | undefined,
+  activeClientMessageId: string | null | undefined,
+): boolean {
+  return Boolean(
+    messageClientMessageId
+    && activeClientMessageId
+    && messageClientMessageId === activeClientMessageId
+  )
+}
+
+export function getTraceAnswerBasis(trace: ExecutionTraceEntry[] | null | undefined): AnswerBasis | null {
+  if (!Array.isArray(trace)) return null
+  for (const entry of [...trace].reverse()) {
+    const basis = (entry as ProductExecutionTraceEntry).answer_basis
+    if (isAnswerBasis(basis)) {
+      return basis
+    }
+  }
+
+  if (trace.some((entry) => entry.decision_code === 'direct_answer')) {
+    return 'direct'
+  }
+  if (trace.some((entry) => entry.kind === 'clarification' || entry.decision_code === 'clarify_missing_context')) {
+    return 'needs_clarification'
+  }
+  if (trace.some((entry) => entry.decision_code === 'retrieval_failed' || /检索失败|检索暂不可用/i.test(`${entry.title} ${entry.detail || ''}`))) {
+    return 'retrieval_unavailable'
+  }
+  if (trace.some((entry) => entry.decision_code === 'retrieval_insufficient' || /证据不足|insufficient/i.test(`${entry.title} ${entry.detail || ''}`))) {
+    return 'evidence_insufficient'
+  }
+  if (trace.some((entry) => entry.decision_code === 'retrieval_hit' || /已检索到 .*知识库证据|知识库证据回答/i.test(`${entry.title} ${entry.detail || ''}`))) {
+    return 'knowledge_backed'
+  }
+  return null
+}
+
+function isAnswerBasis(value: unknown): value is AnswerBasis {
+  return (
+    value === 'knowledge_backed'
+    || value === 'direct'
+    || value === 'retrieval_unavailable'
+    || value === 'evidence_insufficient'
+    || value === 'needs_clarification'
+  )
 }

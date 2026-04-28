@@ -49,6 +49,26 @@ def _normalize_trace_anchor(value: Any) -> dict[str, int] | None:
     return None
 
 
+_ANSWER_BASIS_VALUES = {
+    "knowledge_backed",
+    "direct",
+    "retrieval_unavailable",
+    "evidence_insufficient",
+    "needs_clarification",
+}
+_EVIDENCE_SNIPPET_MAX_CHARS = 180
+_EVIDENCE_LOCATOR_MAX_CHARS = 48
+
+
+def _compact_display_text(value: Any, *, max_chars: int) -> str | None:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1]}…"
+
+
 def _normalize_trace_evidence(value: Any) -> list[dict[str, Any]] | None:
     if not isinstance(value, list):
         return None
@@ -70,8 +90,56 @@ def _normalize_trace_evidence(value: Any) -> list[dict[str, Any]] | None:
         reasoning_range = _normalize_trace_anchor(item.get("reasoning_range"))
         if reasoning_range is not None:
             payload["reasoning_range"] = reasoning_range
+        title = _compact_display_text(item.get("title"), max_chars=80)
+        if title:
+            payload["title"] = title
+        snippet = _compact_display_text(item.get("snippet"), max_chars=_EVIDENCE_SNIPPET_MAX_CHARS)
+        if snippet:
+            payload["snippet"] = snippet
+        source_type = _compact_display_text(item.get("source_type"), max_chars=40)
+        if source_type:
+            payload["source_type"] = source_type
+        locator = _compact_display_text(item.get("locator"), max_chars=_EVIDENCE_LOCATOR_MAX_CHARS)
+        if locator:
+            payload["locator"] = locator
+        evidence_type = _compact_display_text(item.get("evidence_type"), max_chars=40)
+        if evidence_type:
+            payload["evidence_type"] = evidence_type
         normalized.append(payload)
     return normalized or None
+
+
+def _normalize_answer_basis(value: Any) -> str | None:
+    if isinstance(value, str) and value in _ANSWER_BASIS_VALUES:
+        return value
+    return None
+
+
+def _infer_answer_basis(item: dict[str, Any], metadata: dict[str, Any]) -> str | None:
+    explicit = _normalize_answer_basis(item.get("answer_basis") or metadata.get("answer_basis"))
+    if explicit:
+        return explicit
+    decision_code = str(item.get("decision_code") or "").strip()
+    title = str(item.get("title") or "").strip()
+    tool_name = str(item.get("tool_name") or metadata.get("tool_name") or "").strip()
+    result_count = item.get("result_count", metadata.get("result_count"))
+    if decision_code == "direct_answer":
+        return "direct"
+    if decision_code in {"clarify_missing_context"} or item.get("kind") == "clarification":
+        return "needs_clarification"
+    if tool_name == "knowledge_retrieval" or decision_code.startswith("retrieval_") or "知识库" in title:
+        if decision_code == "retrieval_hit":
+            return "knowledge_backed"
+        if decision_code in {"retrieval_unavailable", "retrieval_failed"} or "检索失败" in title or "检索暂不可用" in title:
+            return "retrieval_unavailable"
+        if decision_code == "retrieval_insufficient" or "未命中" in title or "证据不足" in title:
+            return "evidence_insufficient"
+        try:
+            if int(result_count) > 0:
+                return "knowledge_backed"
+        except (TypeError, ValueError):
+            pass
+    return None
 
 
 def _tool_input_detail(value: Any) -> str | None:
@@ -124,6 +192,9 @@ def _normalize_execution_trace(execution_trace: Any, *, default_timestamp: int) 
         decision_code = item.get("decision_code")
         if isinstance(decision_code, str) and decision_code.strip():
             entry["decision_code"] = decision_code
+        answer_basis = _infer_answer_basis(item, metadata)
+        if answer_basis is not None:
+            entry["answer_basis"] = answer_basis
         evidence = _normalize_trace_evidence(item.get("evidence"))
         if evidence is not None:
             entry["evidence"] = evidence
@@ -180,6 +251,7 @@ def _serialize_message(msg: Any) -> MessageResponse:
         id=msg.id,
         conversation_id=msg.conversation_id,
         run_id=_parse_metadata_uuid(metadata, "run_id"),
+        client_message_id=metadata.get("client_message_id") if isinstance(metadata.get("client_message_id"), str) else None,
         role=msg.role,
         content=sanitize_assistant_answer(msg.content) if msg.role == "assistant" else msg.content,
         content_blocks=_sanitize_content_blocks(msg.content_blocks_json),

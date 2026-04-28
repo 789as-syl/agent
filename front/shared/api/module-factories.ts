@@ -34,6 +34,30 @@ export interface AdminKnowledgeGraphOptions<TRequestConfig = unknown> {
   requestConfig?: TRequestConfig
 }
 
+export interface AdminTaskQuery {
+  page?: number
+  page_size?: number
+  task_type?: 'ingestion' | 'vectorization'
+  status?: string
+  q?: string
+}
+
+export interface AdminTraceRunQuery {
+  page?: number
+  page_size?: number
+  user_id?: string
+  conversation_id?: string
+  status?: string
+  q?: string
+}
+
+export interface AdminFeedbackQuery {
+  page?: number
+  page_size?: number
+  rating?: 'helpful' | 'not_helpful'
+  hallucination_flag?: boolean
+}
+
 export function createAuthApi<
   TUser,
   TRegisterRequest,
@@ -111,6 +135,7 @@ export function createAdminIngestionApi<
   TKnowledgePointDeleteResponse,
   TKnowledgePointDocumentUrlResponse,
   TIngestionJobResponse,
+  TIngestionJobListResponse,
   TIngestionJobRetryResponse,
 >(apiClient: ApiClientLike) {
   return {
@@ -142,6 +167,8 @@ export function createAdminIngestionApi<
       apiClient.patch<TKnowledgePointResponse>(`/admin/knowledge-points/${id}`, data),
     reindexKnowledgePoint: (id: string) =>
       apiClient.post<TIngestionJobResponse>(`/admin/knowledge-points/${id}/reindex`),
+    getIngestionJobs: (params?: { page?: number; page_size?: number; status?: string; q?: string }) =>
+      apiClient.get<TIngestionJobListResponse>('/admin/ingestion-jobs', { params }),
     getIngestionJob: (id: string, signal?: AbortSignal) =>
       apiClient.get<TIngestionJobResponse>(`/admin/ingestion-jobs/${id}`, { signal }),
     retryIngestionJob: (id: string) =>
@@ -162,6 +189,8 @@ export function createAdminQuestionsApi<
   TQuestionImportResponse,
   TQuestionVectorizeRequest,
   TVectorizationJobResponse,
+  TVectorizationJobListResponse,
+  TVectorizationJobRetryResponse,
   TQuestionKnowledgePointLink,
 >(apiClient: ApiClientLike) {
   return {
@@ -198,8 +227,12 @@ export function createAdminQuestionsApi<
     },
     vectorizeQuestions: (data: TQuestionVectorizeRequest) =>
       apiClient.post<TVectorizationJobResponse>('/admin/questions/vectorize', data),
+    listVectorizationJobs: (params?: { page?: number; page_size?: number; status?: string }) =>
+      apiClient.get<TVectorizationJobListResponse>('/admin/questions/vectorize-jobs', { params }),
     getVectorizationJob: (id: string) =>
       apiClient.get<TVectorizationJobResponse>(`/admin/questions/vectorize-jobs/${id}`),
+    retryVectorizationJob: (id: string) =>
+      apiClient.post<TVectorizationJobRetryResponse>(`/admin/questions/vectorize-jobs/${id}/retry`),
     linkKnowledgePoints: (questionId: string, data: TQuestionKnowledgePointLink) =>
       apiClient.post<void>(`/admin/questions/${questionId}/knowledge-points`, data),
     unlinkKnowledgePoint: (questionId: string, knowledgePointId: string) =>
@@ -272,5 +305,98 @@ export function createAdminAnalyticsApi<TAdminDashboardResponse, TAdminRange, TK
         options?.requestConfig
       )
     },
+  }
+}
+
+export function createAdminOperationsApi<TAdminTaskConsoleResponse, TQualityRadarResponse>(apiClient: ApiClientLike) {
+  return {
+    getTasks: (params?: AdminTaskQuery) => apiClient.get<TAdminTaskConsoleResponse>('/admin/tasks', { params }),
+    getQualityRadar: () => apiClient.get<TQualityRadarResponse>('/admin/quality-radar'),
+  }
+}
+
+export function createAdminTraceLabApi<TAdminTraceRunListResponse, TAdminTraceRunDetailResponse>(
+  apiClient: ApiClientLike
+) {
+  return {
+    listTraceRuns: (params?: AdminTraceRunQuery) =>
+      apiClient.get<TAdminTraceRunListResponse>('/admin/trace-runs', { params }),
+    getTraceRun: (runId: string, params?: { after_event_id?: string; limit?: number }) =>
+      apiClient.get<TAdminTraceRunDetailResponse>(`/admin/trace-runs/${runId}`, { params }),
+  }
+}
+
+export function createRagEvalApi<
+  TRagGoldenQueryCreate,
+  TRagGoldenQueryResponse,
+  TRagGoldenQueryListResponse,
+  TRagEvalRunCreate,
+  TRagEvalRunResponse,
+  TRagEvalRunListResponse,
+>(apiClient: ApiClientLike) {
+  return {
+    listGoldenQueries: (params?: { page?: number; page_size?: number }) =>
+      apiClient.get<TRagGoldenQueryListResponse>('/admin/rag-eval/golden-queries', { params }),
+    createGoldenQuery: (data: TRagGoldenQueryCreate) =>
+      apiClient.post<TRagGoldenQueryResponse>('/admin/rag-eval/golden-queries', data),
+    deleteGoldenQuery: (queryId: string) => apiClient.delete<void>(`/admin/rag-eval/golden-queries/${queryId}`),
+    listEvalRuns: (params?: { page?: number; page_size?: number }) =>
+      apiClient.get<TRagEvalRunListResponse>('/admin/rag-eval/runs', { params }),
+    createEvalRun: (data: TRagEvalRunCreate) =>
+      apiClient.post<TRagEvalRunResponse>('/admin/rag-eval/runs', data),
+  }
+}
+
+export function createAdminAuditApi<TAdminAuditLogListResponse>(apiClient: ApiClientLike) {
+  return {
+    listAuditLogs: (params?: { page?: number; page_size?: number; action?: string; resource_type?: string; actor_user_id?: string }) =>
+      apiClient.get<TAdminAuditLogListResponse>('/admin/audit-logs', { params }),
+  }
+}
+
+export function createLearningApi<
+  TPracticeSessionCreate,
+  TPracticeSessionResponse,
+  TPracticeSessionListResponse,
+  TPracticeSubmitRequest,
+  TPracticeSubmitResponse,
+  TWrongQuestionListResponse,
+  TMasteryRecordListResponse,
+  TReviewCardListResponse,
+  TLearningPathResponse,
+>(apiClient: ApiClientLike) {
+  return {
+    createPracticeSession: (data: TPracticeSessionCreate) =>
+      apiClient.post<TPracticeSessionResponse>('/learning/practice-sessions', data),
+    listPracticeSessions: (params?: { page?: number; page_size?: number }) =>
+      apiClient.get<TPracticeSessionListResponse>('/learning/practice-sessions', { params }),
+    getPracticeSession: (sessionId: string) =>
+      apiClient.get<TPracticeSessionResponse>(`/learning/practice-sessions/${sessionId}`),
+    submitPracticeAnswer: (sessionId: string, data: TPracticeSubmitRequest) =>
+      apiClient.post<TPracticeSubmitResponse>(`/learning/practice-sessions/${sessionId}/submit`, data),
+    listWrongQuestions: (params?: { page?: number; page_size?: number }) =>
+      apiClient.get<TWrongQuestionListResponse>('/learning/wrong-questions', { params }),
+    listMastery: () => apiClient.get<TMasteryRecordListResponse>('/learning/mastery'),
+    listReviewCards: (params?: { page?: number; page_size?: number }) =>
+      apiClient.get<TReviewCardListResponse>('/learning/review-cards', { params }),
+    getLearningPath: () => apiClient.get<TLearningPathResponse>('/learning/path'),
+  }
+}
+
+export function createMessageFeedbackApi<
+  TMessageFeedbackUpsertRequest,
+  TMessageFeedbackResponse,
+  TAdminMessageFeedbackListResponse,
+  TAdminMessageFeedbackSummaryResponse,
+>(apiClient: ApiClientLike) {
+  return {
+    getMessageFeedback: (messageId: string) =>
+      apiClient.get<TMessageFeedbackResponse | null>(`/feedback/messages/${messageId}`),
+    upsertMessageFeedback: (messageId: string, data: TMessageFeedbackUpsertRequest) =>
+      apiClient.post<TMessageFeedbackResponse>(`/feedback/messages/${messageId}`, data),
+    listAdminFeedback: (params?: AdminFeedbackQuery) =>
+      apiClient.get<TAdminMessageFeedbackListResponse>('/admin/feedback', { params }),
+    getAdminFeedbackSummary: () =>
+      apiClient.get<TAdminMessageFeedbackSummaryResponse>('/admin/feedback/summary'),
   }
 }

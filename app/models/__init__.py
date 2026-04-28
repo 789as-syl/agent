@@ -27,6 +27,7 @@ from app.models.learning import (
     WrongQuestion,
 )
 from app.models.message import Message
+from app.models.message_feedback import MessageFeedback
 from app.models.question_bank import Question, QuestionBank
 from app.models.question_knowledge_point import QuestionKnowledgePoint
 from app.models.rag_eval import RagEvalRun, RagGoldenQuery
@@ -48,6 +49,7 @@ __all__ = [
     "LearningPathItem",
     "MasteryRecord",
     "Message",
+    "MessageFeedback",
     "PracticeAttempt",
     "PracticeSession",
     "Question",

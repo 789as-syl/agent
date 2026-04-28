@@ -7,6 +7,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+AnswerBasis = Literal[
+    "knowledge_backed",
+    "direct",
+    "retrieval_unavailable",
+    "evidence_insufficient",
+    "needs_clarification",
+]
+
 EventType = Literal[
     "execution_trace",
     "reasoning_delta",
@@ -17,7 +25,6 @@ EventType = Literal[
     "error",
     "done",
 ]
-
 
 class TraceRange(BaseModel):
     start: int = Field(..., ge=0, description="起始字符偏移")
@@ -30,6 +37,11 @@ class TraceEvidence(BaseModel):
     detail: str | None = Field(default=None, description="补充证据说明")
     event_id: str | None = Field(default=None, description="关联事件 ID")
     reasoning_range: TraceRange | None = Field(default=None, description="关联 reasoning 区间")
+    title: str | None = Field(default=None, description="用户可见证据标题或来源名")
+    snippet: str | None = Field(default=None, description="紧凑证据摘要，不包含完整原文")
+    source_type: str | None = Field(default=None, description="用户可见来源类型")
+    locator: str | None = Field(default=None, description="短定位提示，仅用于展示")
+    evidence_type: str | None = Field(default=None, description="证据与回答的关系类型")
 
 
 class ExecutionTraceData(BaseModel):
@@ -43,6 +55,7 @@ class ExecutionTraceData(BaseModel):
     result_summary: str | None = Field(default=None, description="兼容旧版本的结果摘要别名")
     result_count: int | None = Field(default=None, description="结果数量")
     retrieval_failed: bool | None = Field(default=None, description="检索是否失败")
+    answer_basis: AnswerBasis | None = Field(default=None, description="用户可见回答依据状态")
     semantic_key: str | None = Field(default=None, description="稳定语义键，用于实时与历史 trace 去重")
     evidence: list[TraceEvidence] | None = Field(default=None, description="用于支撑该步骤的证据列表")
     reasoning_anchor: TraceRange | None = Field(default=None, description="关联的 reasoning 区间")
@@ -57,6 +70,7 @@ class HITLRequestedData(BaseModel):
 
 class HITLResolvedData(BaseModel):
     kind: str | None = Field(default=None, description="HITL 节点类型")
+    model_config = {"extra": "forbid"}
 
 
 class GenerationDeltaData(BaseModel):

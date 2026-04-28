@@ -17,7 +17,7 @@ from app.models.chat_run import ChatRun
 from app.models.enums import RunStatus
 from app.repositories.run_event_repo import RunEventRepository
 from app.schemas.sse_event import SSEEvent
-from app.services.chat_run_service import ChatRunService
+from app.services.chat_run_service import ChatRunService, get_run_client_message_id
 from app.services.run_event_playback_service import RunEventPlaybackService
 from app.services.run_stream_persistence_service import RunStreamPersistenceService
 
@@ -73,6 +73,7 @@ class ChatRunStreamService:
 
         chat_run_service = ChatRunService(self.session)
         pending_resume_value = chat_run_service.consume_pending_resume_value(run)
+        client_message_id = get_run_client_message_id(run)
         agent = self.agent_factory(self.session)
         interrupt_event = asyncio.Event()
         interrupt_channel = build_chat_run_interrupt_channel(run.id)
@@ -192,6 +193,7 @@ class ChatRunStreamService:
                     user_id=str(user_id),
                     query=run.query,
                     pending_resume_value=pending_resume_value,
+                    client_message_id=client_message_id,
                     should_interrupt=lambda: asyncio.sleep(0, result=interrupt_event.is_set()),
                 ):
                     if event.event_type in self.STREAM_BATCH_EVENT_TYPES:

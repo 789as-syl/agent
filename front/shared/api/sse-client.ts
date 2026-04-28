@@ -1,4 +1,4 @@
-import type { SSEEvent, SSEEventType } from '../types'
+import type { AnswerBasis, SSEEvent, SSEEventType } from '../types'
 
 const API_BASE_URL = '/api/v1'
 const PRIMARY_EVENT_TYPES: SSEEventType[] = [
@@ -44,7 +44,7 @@ export class SSEClient {
   private reconnectDelay: number
   private eventSource?: EventSource
   private reconnectTimer?: number
-  // Last persisted playback event returned by stream/events APIs.
+  // Transport-local reconnect cursor for the current stream.
   private lastEventId?: string
   private reconnectAttempts = 0
   private isManualClose = false
@@ -52,8 +52,6 @@ export class SSEClient {
   private processedEventIds = new Set<string>()
   private processedEventQueue: string[] = []
   private readonly maxProcessedEventIds = 1000
-  private currentConversationId?: string
-  private currentRunId?: string
   private onEventCallback?: SSEEventCallback
   private onErrorCallback?: SSEErrorCallback
   private onOpenCallback?: SSEOpenCallback
@@ -86,8 +84,6 @@ export class SSEClient {
     this.isManualClose = false
     this.terminalEventReceived = false
     this.reconnectAttempts = 0
-    this.currentConversationId = conversationId
-    this.currentRunId = runId
     this.lastEventId = lastEventId || undefined
     this.processedEventIds.clear()
     this.processedEventQueue = []
@@ -217,8 +213,6 @@ export class SSEClient {
     this.terminalEventReceived = false
     this.processedEventIds.clear()
     this.processedEventQueue = []
-    this.currentConversationId = undefined
-    this.currentRunId = undefined
     this.closeCurrentStream()
   }
 
@@ -227,19 +221,6 @@ export class SSEClient {
       this.onErrorCallback(error)
     }
   }
-
-  resetLastEventId() {
-    this.lastEventId = undefined
-  }
-
-  getLastEventId() {
-    return this.lastEventId
-  }
-
-  setLastEventId(eventId: string) {
-    this.lastEventId = eventId
-  }
-
   private closeCurrentStream() {
     if (this.reconnectTimer) {
       window.clearTimeout(this.reconnectTimer)
@@ -310,6 +291,7 @@ function normalizeTraceData(
     case 'execution_trace':
       return {
         kind: readString(trace.kind) || 'execution',
+        semantic_key: readString(trace.semantic_key) || undefined,
         title: readString(trace.title) || readString(trace.tool_name) || '执行轨迹',
         detail: readString(trace.detail) || readString(trace.result_summary),
         decision_code: readString(trace.decision_code) || undefined,
@@ -319,6 +301,7 @@ function normalizeTraceData(
         result_summary: readString(trace.result_summary),
         result_count: typeof trace.result_count === 'number' ? trace.result_count : undefined,
         retrieval_failed: typeof trace.retrieval_failed === 'boolean' ? trace.retrieval_failed : undefined,
+        answer_basis: normalizeAnswerBasis(trace.answer_basis),
         evidence: normalizeTraceEvidence(trace.evidence),
         reasoning_anchor: normalizeTraceRange(trace.reasoning_anchor),
         metadata: isRecord(trace.metadata) ? trace.metadata : undefined,
@@ -369,10 +352,40 @@ function normalizeTraceEvidence(value: unknown): Array<Record<string, unknown>> 
       if (eventId) payload.event_id = eventId
       const reasoningRange = normalizeTraceRange(item.reasoning_range)
       if (reasoningRange) payload.reasoning_range = reasoningRange
+      const title = readString(item.title)
+      if (title) payload.title = truncateDisplayText(title, 80)
+      const snippet = readString(item.snippet)
+      if (snippet) payload.snippet = truncateDisplayText(snippet, 180)
+      const sourceType = readString(item.source_type)
+      if (sourceType) payload.source_type = truncateDisplayText(sourceType, 40)
+      const locator = readString(item.locator)
+      if (locator) payload.locator = truncateDisplayText(locator, 48)
+      const evidenceType = readString(item.evidence_type)
+      if (evidenceType) payload.evidence_type = truncateDisplayText(evidenceType, 40)
       return payload
     })
 
   return normalized.length > 0 ? normalized : undefined
+}
+
+function normalizeAnswerBasis(value: unknown): AnswerBasis | undefined {
+  const answerBasis = readString(value)
+  if (
+    answerBasis === 'knowledge_backed' ||
+    answerBasis === 'direct' ||
+    answerBasis === 'retrieval_unavailable' ||
+    answerBasis === 'evidence_insufficient' ||
+    answerBasis === 'needs_clarification'
+  ) {
+    return answerBasis
+  }
+  return undefined
+}
+
+function truncateDisplayText(value: string, maxChars: number): string {
+  const text = value.trim().replace(/\s+/g, ' ')
+  if (text.length <= maxChars) return text
+  return `${text.slice(0, Math.max(0, maxChars - 1))}…`
 }
 
 function normalizeTraceRange(value: unknown): Record<string, number> | undefined {

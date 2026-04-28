@@ -17,12 +17,39 @@ from app.models.retrieval_log import RetrievalLog
 
 RANGE_TO_DAYS: dict[str, int] = {"1d": 1, "7d": 7, "30d": 30}
 QuestionRow = Row[tuple[uuid.UUID, str]]
+DASHBOARD_BREAKDOWN_LABELS: dict[str, str] = {
+    "direct_only": "直接命中",
+    "mapped_only": "映射命中",
+    "hybrid": "混合命中",
+    "empty": "未命中",
+}
 
 
 class KnowledgePointGraphItem(TypedDict):
     knowledge_point_id: str
     title: str
     hit_count: int
+
+
+def resolve_dashboard_breakdown_label(key: str, label: str | None = None) -> str:
+    fallback = DASHBOARD_BREAKDOWN_LABELS.get(key, key)
+    normalized = (label or "").strip()
+    if not normalized or set(normalized) == {"?"}:
+        return fallback
+    return normalized
+
+
+def normalize_dashboard_breakdown_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            **item,
+            "label": resolve_dashboard_breakdown_label(
+                str(item.get("key") or ""),
+                item.get("label") if isinstance(item.get("label"), str) else None,
+            ),
+        }
+        for item in items
+    ]
 
 
 def range_to_since(value: str) -> datetime:
@@ -179,12 +206,14 @@ class AdminAnalyticsRepository:
         ).where(RetrievalLog.created_at >= since)
 
         row = (await self.session.execute(stmt)).one()
-        return [
-            {"key": "direct_only", "label": "????", "value": int(row.direct_only or 0)},
-            {"key": "mapped_only", "label": "????", "value": int(row.mapped_only or 0)},
-            {"key": "hybrid", "label": "????", "value": int(row.hybrid or 0)},
-            {"key": "empty", "label": "???", "value": int(row.empty or 0)},
-        ]
+        return normalize_dashboard_breakdown_items(
+            [
+                {"key": "direct_only", "label": None, "value": int(row.direct_only or 0)},
+                {"key": "mapped_only", "label": None, "value": int(row.mapped_only or 0)},
+                {"key": "hybrid", "label": None, "value": int(row.hybrid or 0)},
+                {"key": "empty", "label": None, "value": int(row.empty or 0)},
+            ]
+        )
 
     async def get_knowledge_heat(self, since: datetime, limit: int = 10) -> list[dict[str, Any]]:
         use_evidence_sidecar = await self._supports_evidence_sidecar()
